@@ -65,70 +65,6 @@ var text3D_builder=function(name, item_position, vector, parent, scene){
 
 }
 
-// Builds a contemporary architectural portal around a gallery door.
-// The original door mesh remains untouched for navigation; this only adds
-// decorative geometry around it so the entrance reads as a real museum room.
-var style_gallery_door = function(doorMesh, doorIndex, scene) {
-	if (!doorMesh || doorMesh.metadata && doorMesh.metadata.galleryDoorStyled) return;
-
-	var bb = doorMesh.getBoundingInfo().boundingBox;
-	var ext = bb.extendSizeLocal;
-	var width = Math.max(ext.x * 2, 1.2);
-	var height = Math.max(ext.y * 2, 2.0);
-
-	// Keep the frame subtle and slightly proud of the original doorway.
-	var side = Math.max(width * 0.075, 0.10);
-	var depth = Math.max(ext.z * 2 + 0.08, 0.14);
-	var gap = Math.max(width * 0.045, 0.07);
-	var topH = side;
-
-	var frameMat = new BABYLON.StandardMaterial("galleryDoorFrameMat_" + doorIndex, scene);
-	frameMat.diffuseColor = new BABYLON.Color3(0.10, 0.10, 0.10);
-	frameMat.specularColor = new BABYLON.Color3(0.20, 0.20, 0.20);
-
-	var lightMat = new BABYLON.StandardMaterial("galleryDoorLightMat_" + doorIndex, scene);
-	lightMat.diffuseColor = new BABYLON.Color3(0.70, 0.55, 0.35);
-	lightMat.emissiveColor = new BABYLON.Color3(0.55, 0.36, 0.16);
-	lightMat.specularColor = new BABYLON.Color3(0, 0, 0);
-
-	var frameRoot = new BABYLON.TransformNode("galleryDoorPortal_" + doorIndex, scene);
-	frameRoot.parent = doorMesh.parent;
-	frameRoot.position = doorMesh.position.clone();
-	frameRoot.rotation = doorMesh.rotation.clone();
-	frameRoot.scaling = doorMesh.scaling.clone();
-
-	var makeBox = function(name, w, h, d, x, y, mat) {
-		var box = BABYLON.MeshBuilder.CreateBox(name, {
-			width: w, height: h, depth: d
-		}, scene);
-		box.parent = frameRoot;
-		box.position = new BABYLON.Vector3(x, y, 0);
-		box.material = mat;
-		box.isPickable = false;
-		return box;
-	};
-
-	// Architectural outer frame.
-	makeBox("doorPortalLeft_" + doorIndex, side, height + topH, depth, -(width / 2 + gap), 0, frameMat);
-	makeBox("doorPortalRight_" + doorIndex, side, height + topH, depth, (width / 2 + gap), 0, frameMat);
-	makeBox("doorPortalTop_" + doorIndex, width + side + gap * 2, topH, depth, 0, height / 2 + topH / 2, frameMat);
-
-	// Fine warm light strips give each room entrance a discreet museum identity.
-	var lightW = Math.max(side * 0.22, 0.035);
-	var lightDepth = Math.max(depth * 0.25, 0.025);
-	makeBox("doorPortalLightL_" + doorIndex, lightW, height * 0.82, lightDepth,
-		-(width / 2 + gap + side * 0.28), 0, lightMat);
-	makeBox("doorPortalLightR_" + doorIndex, lightW, height * 0.82, lightDepth,
-		(width / 2 + gap + side * 0.28), 0, lightMat);
-
-	// A very slim top light completes the portal without overpowering the artworks.
-	makeBox("doorPortalLightTop_" + doorIndex, width * 0.78, lightW, lightDepth,
-		0, height / 2 + topH * 0.52, lightMat);
-
-	if (!doorMesh.metadata) doorMesh.metadata = {};
-	doorMesh.metadata.galleryDoorStyled = true;
-};
-
 var plaque_builder = function(name, item_position, item_size, vector, metadata, scene) {
 	// Renders an optional museum-style plaque below artwork using DynamicTexture
 	// metadata format: "ID #N Title\nSubtitle" — ID prefix is stripped for display
@@ -473,9 +409,6 @@ function populate_template(config_file, room_name,scene){
 
 				//put text
 				text3D_builder(dict_items[renamed_doors].replace("#", " "), mesh.position, normal, mesh.parent, scene);
-
-				// Add the new architectural portal around the existing navigable door.
-				style_gallery_door(mesh, renamed_doors, scene);
 				
 			}
 			renamed_doors++;
@@ -524,6 +457,15 @@ var _loadPhase = { artworks: false, lights: false, active: false };
 
 function beginTemplateLoad(){
 	_loadPhase = { artworks: false, lights: false, active: true };
+
+	// The template has already been loaded when this phase begins.
+	// Keep the template indicator at 100% instead of displaying 0%.
+	percentage_template = 100;
+	var templateBar = document.getElementById("loadingBar_template");
+	var templateText = document.getElementById("percentLoaded_template");
+	if (templateBar) templateBar.style.width = "100%";
+	if (templateText) templateText.textContent = "100%";
+
 	setLightsProgress(0);
 }
 
