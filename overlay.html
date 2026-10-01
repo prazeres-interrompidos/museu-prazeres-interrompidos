@@ -1,0 +1,107 @@
+<div id="permanent-overlay">
+    <div class="overlay-section" id="artwork-section">
+        <p>Artwork</p>
+        <p id="artwork-info"></p>
+    </div>
+    <div class="overlay-section" id="navigation-section">
+        <p>Manual navigation</p>
+        <div class="nav-buttons">
+            <button class="nav-button" onclick="manual_move_backward()">&#x25C0;</button>
+            <button class="nav-button" onclick="manual_move_forward()">&#x25B6;</button>
+            <button class="nav-button cinematic-button" type="button"
+                    title="Cinematic visit" aria-label="Cinematic visit"
+                    onclick="if(typeof CB_cinematic_visit==='function')CB_cinematic_visit()">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none"
+                     stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
+                     stroke-linecap="round" aria-hidden="true">
+                    <circle cx="6.75" cy="8" r="2.7"/>
+                    <circle cx="11.55" cy="7.6" r="3.2"/>
+                    <rect x="2.75" y="11" width="13" height="8.5" rx="1.8"/>
+                    <polygon points="15.75 13.2 21.25 10.8 21.25 19.7 15.75 17.3"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div class="overlay-section" id="help-section">
+        <button class="help-button" onclick="toggleHelp()">Help</button>
+        <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.5rem;cursor:pointer;font-size:0.7rem;color:#ccc;">
+            <input type="checkbox" id="plaquesToggle" onchange="if(typeof togglePlaques==='function')togglePlaques(this)" style="accent-color:oklch(0.66 0.075 64);"> Plaques
+        </label>
+    </div>
+    <!-- Canonical "open threshold" mark, inlined: the overlay is injected into
+         pages that don't define the <symbol>, so <use> has nothing to reference. -->
+    <a id="overlay-attribution" href="https://openvgal.com" target="_blank" rel="noopener">
+        <svg viewBox="0 0 256 256" aria-hidden="true" focusable="false">
+            <polygon points="35.84,35.84 220.16,35.84 161.18,87.14 94.82,87.14" fill="oklch(0.985 0.004 80)"/>
+            <polygon points="35.84,35.84 94.82,87.14 94.82,153.5 35.84,220.16" fill="oklch(0.995 0.002 80)"/>
+            <polygon points="220.16,35.84 161.18,87.14 161.18,153.5 220.16,220.16" fill="oklch(0.995 0.002 80)"/>
+            <polygon points="35.84,220.16 220.16,220.16 161.18,153.5 94.82,153.5" fill="oklch(0.78 0.065 68)"/>
+            <rect x="94.82" y="87.14" width="66.36" height="66.36" fill="oklch(0.985 0.004 80)"/>
+            <line x1="35.84" y1="35.84" x2="94.82" y2="87.14" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
+            <line x1="220.16" y1="35.84" x2="161.18" y2="87.14" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
+            <line x1="35.84" y1="220.16" x2="94.82" y2="153.5" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
+            <line x1="220.16" y1="220.16" x2="161.18" y2="153.5" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
+            <rect x="94.82" y="87.14" width="66.36" height="66.36" fill="none" stroke="oklch(0.16 0.01 270)" stroke-width="5.76"/>
+            <rect x="35.84" y="35.84" width="184.32" height="184.32" fill="none" stroke="oklch(0.16 0.01 270)" stroke-width="6.91"/>
+        </svg>
+        <span>Made with OpenVGal</span>
+    </a>
+</div>
+
+<div id="help-popup">
+    <div class="language-buttons">
+        <button class="lang-button active" onclick="changeLanguage('eng')">ENG</button>
+        <button class="lang-button" onclick="changeLanguage('spa')">SPA</button>
+        <button class="lang-button" onclick="changeLanguage('jap')">JAP</button>
+        <button class="lang-button" onclick="changeLanguage('cn')">CN</button>
+    </div>
+    
+    <div class="help-content">
+        <div class="help-text eng active">
+            You can move in the virtual environment in 3 different ways:
+            <br><br>1) You can use the arrow keys to move forward, backwards, left and right. You can drag the mouse to look up/down or spin;<br>
+            <img src="icons/keyboard_move.png" alt="Keyboard Movement" class="help-image ">
+            <img src="icons/keyboard_pan.png" alt="Keyboard Pan" class="help-image ">
+            <br><br>2) On a mobile device you can drag one finger to move forward and drag 2 fingers to spin;
+            <img src="icons/touch_move.png" alt="Touch Movement" class="help-image">
+            <img src="icons/touch_pan.png" alt="Touch Pan" class="help-image">
+            <br><br>3) You can use the manual navigation buttons once you are in a gallery.
+            <br><br>To go to a gallery click on the corresponding door.
+        </div>
+        <div class="help-text spa">
+            Puedes moverte en el entorno virtual de 3 formas diferentes:
+            <br><br>1) Puedes usar las teclas de flecha para moverte hacia adelante, atrás, izquierda y derecha. Puedes arrastrar el mouse para mirar arriba/abajo o girar;
+            <img src="icons/keyboard_move.png" alt="Keyboard Movement" class="help-image ">
+            <img src="icons/keyboard_pan.png" alt="Keyboard Pan" class="help-image ">
+            <br><br>2) En un dispositivo móvil puedes arrastrar un dedo para avanzar y arrastrar 2 dedos para girar;
+            <img src="icons/touch_move.png" alt="Touch Movement" class="help-image">
+            <img src="icons/touch_pan.png" alt="Touch Pan" class="help-image">
+            <br><br>3) Puedes usar los botones de navegación manual una vez que estés en una galería.
+            <br><br>Para ir a una galería, haz clic en la puerta correspondiente.
+        </div>
+        <div class="help-text jap">
+            仮想環境では3つの方法で移動できます：
+            <br><br>1) 矢印キーを使用して前後左右に移動できます。マウスをドラッグして上下を見たり回転したりできます；
+            <img src="icons/keyboard_move.png" alt="Keyboard Movement" class="help-image ">
+            <img src="icons/keyboard_pan.png" alt="Keyboard Pan" class="help-image ">
+            <br><br>2) モバイルデバイスでは、1本の指でドラッグして前進し、2本の指でドラッグして回転できます；
+            <img src="icons/touch_move.png" alt="Touch Movement" class="help-image">
+            <img src="icons/touch_pan.png" alt="Touch Pan" class="help-image">
+            <br><br>3) ギャラリー内では手動ナビゲーションボタンを使用できます。
+            <br><br>ギャラリーに行くには、対応するドアをクリックしてください。
+        </div>
+        <div class="help-text cn">
+            您可以通过3种不同的方式在虚拟环境中移动：
+            <br><br>1) 您可以使用方向键前后左右移动。您可以拖动鼠标来上下看或旋转；
+            <img src="icons/keyboard_move.png" alt="Keyboard Movement" class="help-image ">
+            <img src="icons/keyboard_pan.png" alt="Keyboard Pan" class="help-image ">
+            <br><br>2) 在移动设备上，您可以用一根手指拖动前进，用两根手指拖动旋转；
+            <img src="icons/touch_move.png" alt="Touch Movement" class="help-image">
+            <img src="icons/touch_pan.png" alt="Touch Pan" class="help-image">
+            <br><br>3) 在画廊中时，您可以使用手动导航按钮。
+            <br><br>要进入画廊，请点击相应的门。
+        </div>
+    </div>
+    
+    <button class="close-button" onclick="toggleHelp()">Close</button>
+</div>
