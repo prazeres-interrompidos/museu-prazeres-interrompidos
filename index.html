@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+ <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Virtual 3D Art Gallery | OpenVGal by LB Artworks</title>
+	<meta name="description" content="Explore a stunning 3D virtual tour of your art gallery. Experience interactive WebGL visuals with OpenVGal immersive 3D environment.">
+	<meta name="keywords" content="3D virtual gallery, WebGL environment, interactive 3D model, 3D virtual photo gallery, 3D virtual art gallery">
+	<meta name="robots" content="index, follow">
+	<!-- No static canonical or og:url. This file ships in self-host ZIPs and as
+	     cdn.openvgal.com/core/viewer.html, so its real address is only known at
+	     runtime. Both tags are created further down, and only when
+	     window.openvgal_location is an absolute https URL. -->
+	<!-- Open Graph -->
+	<meta property="og:title" content="Interactive 3D Virtual Gallery | OpenVGAL">
+	<meta property="og:description" content="Step into a fully immersive 3D environment. Explore our WebGL-powered virtual tour of an art gallery.">
+	<meta property="og:image" content="preview.jpg">
+	<meta property="og:type" content="website">
+	<!-- Twitter Card -->
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="3D Virtual Gallery | OpenVGAL">
+	<meta name="twitter:description" content="Experience an interactive 3D virtual gallery powered by WebGL. Explore now!">
+	<meta name="twitter:image" content="preview.jpg">
+	<!-- Structured Data -->
+	<script type="application/ld+json">
+	{
+		"@context": "https://schema.org",
+		"@type": "VirtualTour",
+		"name": "3D Virtual Gallery",
+		"description": "An interactive WebGL-based 3D virtual gallery by OpenVGAL.",
+		"image": "preview.jpg",
+		"provider": {
+		"@type": "Organization",
+		"name": "OpenVGAL"
+		}
+	}
+	</script>
+	<script>
+         <!--/////////////////////// CUSTOMIZE THIS VALUE //////////////////////////////////-->
+		window.openvgal_location = '.';
+		<!--/////////////////////// CUSTOMIZE THIS VALUE //////////////////////////////////-->
+
+		// The SEO tags are filled in from this value further down the head, after the
+		// URL-based overrides have had their say — see the "SEO tags" block below.
+	</script>
+
+       <style>
+		html,
+		body {
+		overflow: hidden;
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+		}
+
+		#renderCanvas {
+		width: 100%;
+		height: 100%;
+		touch-action: none;
+		}
+		#loader {
+		  width: 100%;
+		  height: 100%;
+		  background: #000;
+		  margin: auto;
+		  display: flex;
+		  justify-content: center;
+		  align-items: center;
+		  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+		}
+		#loader .loader-card {
+		  background: #18181b;
+		  border: 1px solid #27272a;
+		  border-radius: 16px;
+		  padding: 2rem 2.5rem;
+		  display: flex;
+		  flex-direction: column;
+		  gap: 0.2rem;
+		  min-width: 320px;
+		  width: min(420px, 80vw);
+		}
+		#loader p {
+		  color: #a1a1aa;
+		  font-size: 0.85rem;
+		  font-weight: 500;
+		  letter-spacing: 0.05em;
+		  text-transform: uppercase;
+		  margin: 0;
+		  padding-top: 1rem;
+		}
+		#loader .percent-text {
+		  color: #d4d4d8;
+		  font-size: 0.8rem;
+		  font-variant-numeric: tabular-nums;
+		  margin: 0;
+		  padding-top: 0.25rem;
+		}
+		#loaded {
+		  opacity: 0;
+		  transition: opacity 1s ease;
+		}
+		.loadingContainer {
+		  width: 100%;
+		  height: 12px;
+		  background: #27272a;
+		  border-radius: 6px;
+		  overflow: hidden;
+		  margin-top: 0.3rem;
+		}
+		.loadingBar {
+		  height: 100%;
+		  background: linear-gradient(90deg, oklch(0.78 0.065 68), oklch(0.66 0.075 64));
+		  border-radius: 6px;
+		  width: 0%;
+		}
+
+
+
+
+
+
+        /* Navigation Map */
+        #map-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 25;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #d4d4d8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }
+        #map-button:hover {
+            background: color-mix(in oklab, oklch(0.78 0.065 68) 22%, transparent);
+            border-color: color-mix(in oklab, oklch(0.78 0.065 68) 50%, transparent);
+            color: oklch(0.78 0.065 68);
+        }
+        #map-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            flex-direction: column;
+            align-items: center;
+            padding: 0;
+            overflow-y: auto;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        #map-header {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 32px 8px;
+            box-sizing: border-box;
+        }
+        #map-title {
+            color: #fafafa;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+        #map-close {
+            background: none;
+            border: none;
+            color: #71717a;
+            font-size: 1.75rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        #map-close:hover {
+            color: #fafafa;
+        }
+        #map-grid {
+            width: 100%;
+            max-width: 960px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 18px;
+            padding: 16px 32px 40px;
+            box-sizing: border-box;
+        }
+        .map-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 14px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.25s ease, border-color 0.25s, box-shadow 0.3s;
+        }
+        .map-card:hover {
+            transform: translateY(-4px) scale(1.015);
+            border-color: color-mix(in oklab, oklch(0.78 0.065 68) 55%, transparent);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px color-mix(in oklab, oklch(0.78 0.065 68) 25%, transparent);
+        }
+        .map-card.map-card-active {
+            border-color: oklch(0.66 0.075 64);
+            box-shadow: 0 0 0 1px oklch(0.66 0.075 64), 0 6px 20px color-mix(in oklab, oklch(0.78 0.065 68) 28%, transparent);
+        }
+        .map-card-thumb-wrap {
+            position: relative;
+            overflow: hidden;
+        }
+        .map-card-thumb-wrap::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40%;
+            background: linear-gradient(to top, rgba(0,0,0,0.5), transparent);
+            pointer-events: none;
+        }
+        .map-card-thumb {
+            width: 100%;
+            aspect-ratio: 3 / 2;
+            object-fit: cover;
+            display: block;
+            background: #18181b;
+            transition: transform 0.3s ease;
+        }
+        .map-card:hover .map-card-thumb {
+            transform: scale(1.05);
+        }
+        .map-card-placeholder {
+            width: 100%;
+            aspect-ratio: 3 / 2;
+            background: linear-gradient(135deg, #18181b 0%, #27272a 50%, #1e1b4b 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .map-card-info {
+            padding: 12px 14px 14px;
+            text-align: center;
+        }
+        .map-card-name {
+            color: #e4e4e7;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin: 0 0 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .map-card-count {
+            color: #71717a;
+            font-size: 0.75rem;
+            font-weight: 400;
+            margin: 0;
+        }
+        @media screen and (max-width: 600px) {
+            #map-button {
+                top: 12px;
+                left: 12px;
+                width: 38px;
+                height: 38px;
+            }
+            #map-header {
+                padding: 16px 16px 4px;
+            }
+            #map-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                padding: 10px 16px 24px;
+            }
+            .map-card-info {
+                padding: 8px 10px 10px;
+            }
+            .map-card-name {
+                font-size: 0.8rem;
+            }
+        }
+
+    </style>
+
+    <!-- Debug mode: ?debug=1 loads an in-page console (Eruda) and records a
+         breadcrumb trail to localStorage. The trail survives a tab kill, so a
+         large gallery reaped by iOS Safari's memory limit can still be
+         diagnosed: reopen with ?debug=1 and the previous run's trail is dumped
+         to the console. Entirely inert without ?debug=1. -->
+    <script>
+    (function () {
+        // Always defined so instrumented call sites stay one-liners.
+        window.ovgMark = function () {};
+
+        // The flag is sticky, because published galleries embed this file in a
+        // cross-origin iframe whose src we cannot add a query param to. Arming it
+        // once in a direct tab latches it for this origin, so every later embed
+        // records too. The latch expires after TTL so a forgotten debug session
+        // cannot leave the console button on every later visit. ?debug=0 disarms
+        // it immediately.
+        var STICKY = 'ovg_debug_on';
+        var TTL = 2 * 60 * 60 * 1000;
+        var flag = new URLSearchParams(window.location.search).get('debug');
+        var armed = (flag === '1');
+        try {
+            if (flag === '1') localStorage.setItem(STICKY, String(Date.now()));
+            else if (flag === '0') localStorage.removeItem(STICKY);
+            else {
+                // Legacy value was '1'; anything not a live timestamp is stale.
+                var since = parseInt(localStorage.getItem(STICKY), 10);
+                armed = (since > 0 && (Date.now() - since) < TTL);
+                if (!armed) localStorage.removeItem(STICKY);
+            }
+        } catch (e) {}
+        if (!armed) return;
+
+        var KEY = 'ovg_debug_trail';
+        var MAX = 300;
+        var t0 = Date.now();
+        var trail = [];
+        var prev = null;
+
+        // Read the trail the previous run left behind before overwriting it.
+        try {
+            var raw = localStorage.getItem(KEY);
+            if (raw) prev = JSON.parse(raw);
+        } catch (e) {}
+
+        function store() {
+            try { localStorage.setItem(KEY, JSON.stringify(trail)); } catch (e) {}
+        }
+
+        function stats() {
+            var s = {};
+            try {
+                // Viewer locals are not globals; go through the engine store.
+                var scene = BABYLON.EngineStore.LastCreatedScene;
+                if (scene) {
+                    s.meshes = scene.meshes.length;
+                    s.verts = scene.getTotalVertices();
+                    s.mats = scene.materials.length;
+                    s.texs = scene.textures.length;
+                    var bytes = 0;
+                    for (var i = 0; i < scene.textures.length; i++) {
+                        var sz = scene.textures[i].getSize();
+                        // 4 bytes/texel, +33% for the mip chain
+                        if (sz && sz.width) bytes += sz.width * sz.height * 4 * 1.33;
+                    }
+                    s.texMB = Math.round(bytes / 1048576);
+                    s.fps = Math.round(scene.getEngine().getFps());
+                }
+            } catch (e) {}
+            return s;
+        }
+
+        window.ovgMark = function (label, extra) {
+            var e = { t: Date.now() - t0, m: label };
+            var s = stats();
+            for (var k in s) e[k] = s[k];
+            if (extra) e.x = String(extra);
+            trail.push(e);
+            if (trail.length > MAX) trail.splice(0, trail.length - MAX);
+            store();
+            console.log('[ovg] ' + e.t + 'ms', label,
+                (s.texMB === undefined) ? '' : '(' + s.meshes + ' meshes, ' + s.texMB + ' MB tex)',
+                extra || '');
+        };
+
+        window.ovgDebug = {
+            prev: function () { console.table(prev || []); return prev; },
+            trail: function () { console.table(trail); return trail; },
+            stats: stats,
+            clear: function () { try { localStorage.removeItem(KEY); } catch (e) {} },
+            off: function () {
+                try { localStorage.removeItem(STICKY); } catch (e) {}
+                return 'debug disarmed for this origin - reload to take effect';
+            }
+        };
+
+        window.addEventListener('error', function (ev) {
+            ovgMark('ERROR', (ev.message || '') + ' @ ' + (ev.filename || '') + ':' + (ev.lineno || ''));
+        });
+        window.addEventListener('unhandledrejection', function (ev) {
+            ovgMark('REJECT', (ev.reason && ev.reason.message) || ev.reason);
+        });
+        // A clean exit stamps the trail. A trail without this stamp was killed.
+        window.addEventListener('pagehide', function () { ovgMark('pagehide (clean exit)'); });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var c = document.getElementById('renderCanvas');
+            if (!c) return;
+            // Highest-signal event for a memory death: it fires while the page
+            // is still alive, whereas an OS kill leaves nothing behind.
+            c.addEventListener('webglcontextlost', function () { ovgMark('WEBGL CONTEXT LOST'); });
+            c.addEventListener('webglcontextrestored', function () { ovgMark('webgl context restored'); });
+        });
+
+        // Separates "died while loading" from "died while walking around".
+        setInterval(function () { ovgMark('heartbeat'); }, 10000);
+
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+        s.onload = function () {
+            eruda.init();
+            ovgMark('debug console ready', navigator.userAgent);
+            if (!prev) return;
+            var clean = prev.some(function (e) { return /clean exit/.test(e.m); });
+            console.warn('[ovg] previous run: ' + prev.length + ' marks, ' +
+                (clean ? 'exited cleanly' : 'NO clean exit - the tab was killed'));
+            console.table(prev);
+        };
+        s.onerror = function () { ovgMark('eruda failed to load'); };
+        document.head.appendChild(s);
+    })();
+    </script>
+
+    <script src="babylon.js"></script>
+    <script src="babylonjs.loaders.min.js"></script>
+    <script src="https://code.jquery.com/pep/0.4.3/pep.js"></script>
+	<!-- uncomment if you want to enable the functionality of saving as glb in the debug menu
+	<script src="https://preview.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+	-->
+	<script src="https://unpkg.com/earcut@2.1.1/dist/earcut.min.js"></script>
+    <link rel="stylesheet" href="overlay.css">
+
+	<script>
+	// URL-based mode overrides - must run before declarations.js
+	// To use local templates/materials instead of CDN, set: window.openvgal_cdn_base = '';
+	(function() {
+		const urlParams = new URLSearchParams(window.location.search);
+		if (urlParams.get('preview') === 'iframe' && window.parent) {
+			window.openvgal_preview_mode = true;
+			window.openvgal_cdn_base = window.parent.openvgal_cdn_base || window.location.origin;
+			console.log('Preview mode: CDN base =', window.openvgal_cdn_base);
+		}
+		// Multi-tenant mode: ?openvgal_location=<absolute https URL> points the viewer
+		// at a remote gallery (e.g. a published gallery on assets.openvgal.com).
+		// Only https:// URLs are accepted, to avoid loading arbitrary third-party content.
+		const locParam = urlParams.get('openvgal_location');
+		if (locParam) {
+			try {
+				const u = new URL(locParam);
+				if (u.protocol === 'https:') {
+					window.openvgal_location = locParam;
+					console.log('Remote location:', locParam);
+				} else {
+					console.warn('Ignoring openvgal_location: not https');
+				}
+			} catch (e) {
+				console.warn('Ignoring openvgal_location: invalid URL');
+			}
+		}
+		// Dev mode: serve repo root via static server, point viewer at examples/ + cdn/
+		// Usage: from repo root run `python -m http.server 8080`, open
+		//   http://localhost:8080/site/viewer.html?dev=1
+		if (urlParams.get('dev') === '1') {
+			window.openvgal_location = '/examples';
+			window.openvgal_cdn_base = '/cdn';
+			console.log('Dev mode: location=/examples, cdn=/cdn');
+		}
+	})();
+
+	// SEO tags. Runs after the overrides above, so it sees the final value of
+	// window.openvgal_location. Only an absolute https URL can produce a correct
+	// canonical or og:url; the head default '.' and dev mode's '/examples' cannot,
+	// so they are left alone rather than emitting './virtual.html'.
+	(function() {
+		const raw = window.openvgal_location;
+		if (typeof raw !== 'string' || !/^https:\/\//i.test(raw.trim())) return;
+
+		const baseUrl = raw.trim().replace(/\/+$/, '');
+		const fullPageUrl = baseUrl + '/virtual.html';
+		const imageUrl = baseUrl + '/preview.jpg';
+		const providerUrl = baseUrl.replace('/virtual', '');
+
+		// canonical and og:url carry no static value, so create them here.
+		let canonical = document.querySelector('link[rel="canonical"]');
+		if (!canonical) {
+			canonical = document.createElement('link');
+			canonical.rel = 'canonical';
+			document.head.appendChild(canonical);
+		}
+		canonical.href = fullPageUrl;
+
+		let ogUrl = document.querySelector('meta[property="og:url"]');
+		if (!ogUrl) {
+			ogUrl = document.createElement('meta');
+			ogUrl.setAttribute('property', 'og:url');
+			document.head.appendChild(ogUrl);
+		}
+		ogUrl.setAttribute('content', fullPageUrl);
+
+		const ogImage = document.querySelector('meta[property="og:image"]');
+		if (ogImage) ogImage.setAttribute('content', imageUrl);
+		const twitterImage = document.querySelector('meta[name="twitter:image"]');
+		if (twitterImage) twitterImage.setAttribute('content', imageUrl);
+
+		const structuredData = document.querySelector('script[type="application/ld+json"]');
+		if (structuredData) {
+			try {
+				const data = JSON.parse(structuredData.textContent);
+				data['@id'] = fullPageUrl;
+				data.url = fullPageUrl;
+				data.image = imageUrl;
+				if (data.provider) data.provider.url = providerUrl;
+				structuredData.textContent = JSON.stringify(data, null, 2);
+			} catch (e) {
+				console.warn('Failed to update structured data:', e);
+			}
+		}
+	})();
+	</script>
+  </head>
+
+  <body>
+  
+
+
+  
+  	<div id="loader">
+	  <div class="loader-card">
+		<p>Loading template</p>
+		<div class="loadingContainer">
+			<div class="loadingBar" id="loadingBar_template"></div>
+		</div>
+		<p class="percent-text" id="percentLoaded_template">0%</p>
+		<p>Loading materials</p>
+		<div class="loadingContainer">
+			<div class="loadingBar" id="loadingBar_materials"></div>
+		</div>
+		<p class="percent-text" id="percentLoaded_materials">0%</p>
+		<p>Loading artworks</p>
+		<div class="loadingContainer">
+			<div class="loadingBar" id="loadingBar_artwork"></div>
+		</div>
+		<p class="percent-text" id="percentLoaded_artwork">0%</p>
+		<p>Setting up lights</p>
+		<div class="loadingContainer">
+			<div class="loadingBar" id="loadingBar_lights"></div>
+		</div>
+		<p class="percent-text" id="percentLoaded_lights">0%</p>
+	  </div>
+	</div>
+
+
+    <script src='declarations.js'></script>
+
+  
+      
+    <canvas id="renderCanvas" touch-action="none"></canvas>
+
+	 <script src='room_builder_aux.js'></script>
+	 <script src='openvgal-lighting.js'></script>
+    <script>
+    // Load overlay.js: local first, CDN fallback
+    (function() {
+        var s = document.createElement('script');
+        s.src = 'overlay.js';
+        s.onerror = function() {
+            if (typeof cdn_base !== 'undefined' && cdn_base) {
+                var f = document.createElement('script');
+                f.src = cdn_base + '/core/overlay.js';
+                document.body.appendChild(f);
+            }
+        };
+        document.body.appendChild(s);
+    })();
+    </script>
+    <script src='openvgal-viewer.js'></script>
+
+    <!-- Navigation Map -->
+    <button id="map-button" onclick="toggleMap()" title="Gallery Map" style="display:none;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+    </button>
+
+    <div id="map-modal">
+        <div id="map-header">
+            <span id="map-title">Gallery Map</span>
+            <button id="map-close" onclick="toggleMap()">&times;</button>
+        </div>
+        <div id="map-grid"></div>
+    </div>
+
+    <script>
+    function toggleMap() {
+        var modal = document.getElementById('map-modal');
+        if (!modal) return;
+        var isHidden = modal.style.display === 'none' || modal.style.display === '';
+        if (isHidden) {
+            populateMap();
+            modal.style.display = 'flex';
+        } else {
+            modal.style.display = 'none';
+        }
+    }
+
+    function populateMap() {
+        var grid = document.getElementById('map-grid');
+        if (!grid || typeof config_file_content === 'undefined') return;
+        grid.innerHTML = '';
+
+        for (var galleryName in config_file_content) {
+            if (galleryName === 'Technical') continue;
+
+            var gallery = config_file_content[galleryName];
+            var imageKeys = Object.keys(gallery).filter(function(k) {
+                return gallery[k] && gallery[k].resource_type === 'image';
+            });
+
+            var card = document.createElement('div');
+            card.className = 'map-card';
+            if (galleryName === current_gallery) card.className += ' map-card-active';
+            card.onclick = (function(name) {
+                return function() { navigateToGallery(name); };
+            })(galleryName);
+
+            var wrap = document.createElement('div');
+            wrap.className = 'map-card-thumb-wrap';
+            if (imageKeys.length > 0) {
+                var img = document.createElement('img');
+                // Must match the room build's CORS fetch, or the two requests share
+                // one cache entry and the no-Origin reply (no ACAO) breaks the wall texture.
+                img.crossOrigin = 'anonymous';
+                img.className = 'map-card-thumb';
+                var resourcePath = gallery[imageKeys[0]].resource;
+                img.src = (typeof window.resolveImageUrl === 'function')
+                    ? window.resolveImageUrl(resourcePath)
+                    : hallspics_prefix + resourcePath;
+                img.alt = galleryName;
+                img.loading = 'lazy';
+                wrap.appendChild(img);
+            } else {
+                var placeholder = document.createElement('div');
+                placeholder.className = 'map-card-placeholder';
+                wrap.appendChild(placeholder);
+            }
+            card.appendChild(wrap);
+
+            var info = document.createElement('div');
+            info.className = 'map-card-info';
+
+            var nameEl = document.createElement('p');
+            nameEl.className = 'map-card-name';
+            nameEl.textContent = galleryName === 'root' ? 'Main Hall' : galleryName.replace(/#/g, ' ');
+            info.appendChild(nameEl);
+
+            var countEl = document.createElement('p');
+            countEl.className = 'map-card-count';
+            countEl.textContent = imageKeys.length + (imageKeys.length === 1 ? ' artwork' : ' artworks');
+            info.appendChild(countEl);
+
+            card.appendChild(info);
+            grid.appendChild(card);
+        }
+    }
+
+    function navigateToGallery(name) {
+        // Already here — nothing to swap.
+        if (name === current_gallery) { toggleMap(); return; }
+
+        // Prefer the in-scene swap (openvgal-viewer.js). A full page reload
+        // spins up a second Babylon engine/WebGL context while the old
+        // document is still resident, which spikes memory; galleryManager
+        // instead disposes only the outgoing gallery and reuses the engine.
+        if (typeof window.galleryManager === 'function') {
+            document.getElementById('map-modal').style.display = 'none';
+            // Keep the URL shareable/refresh-safe without triggering a reload.
+            var p = new URLSearchParams(window.location.search);
+            p.set('gallery', name);
+            history.replaceState(null, '', window.location.pathname + '?' + p.toString());
+            // Door-style synthetic event: galleryManager strips the d_ prefix
+            // and _<n> tail to recover the gallery name (same as the boot event).
+            window.galleryManager({ source: { name: 'd_' + name + '_1' } });
+            return;
+        }
+
+        // Fallback: full reload if the in-scene swap isn't available.
+        var params = new URLSearchParams(window.location.search);
+        params.set('gallery', name);
+        window.location.search = params.toString();
+    }
+
+    (function waitForConfig() {
+        if (typeof config_file_content !== 'undefined' && config_file_content) {
+            document.getElementById('map-button').style.display = 'flex';
+        } else {
+            setTimeout(waitForConfig, 200);
+        }
+    })();
+    </script>
+  </body>
+</html>
