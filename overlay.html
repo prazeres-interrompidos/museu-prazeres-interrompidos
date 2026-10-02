@@ -104,3 +104,126 @@
     
     <button class="close-button" onclick="toggleHelp()">Fechar</button>
 </div>
+
+
+<style id="podcast-control-style">
+  #podcast-control {
+    margin-left: 10px;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0,0,0,.72);
+    color: #fff;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 38px;
+    text-align: center;
+    display: none;
+    vertical-align: middle;
+  }
+  #podcast-control:hover { background: rgba(0,0,0,.9); }
+  #podcast-control:disabled { opacity: .45; cursor: default; }
+</style>
+<script>
+(function () {
+  const AUDIO_DIR = 'EPISÓDIOS PARA O MUSEU/';
+  let podcastAudio = null;
+  let currentEpisode = null;
+
+  function getEpisodeCode(value) {
+    if (!value) return null;
+    const match = String(value).match(/(^|[^A-Za-z0-9])(E\d+)(?=\s|[-–—:(.]|$)/i);
+    return match ? match[2].toUpperCase() : null;
+  }
+
+  function ensureAudio() {
+    if (!podcastAudio) {
+      podcastAudio = document.createElement('audio');
+      podcastAudio.preload = 'none';
+      podcastAudio.addEventListener('ended', updateButton);
+      podcastAudio.addEventListener('play', updateButton);
+      podcastAudio.addEventListener('pause', updateButton);
+      document.body.appendChild(podcastAudio);
+    }
+    return podcastAudio;
+  }
+
+  function updateButton() {
+    const b = document.getElementById('podcast-control');
+    if (!b) return;
+    b.textContent = podcastAudio && !podcastAudio.paused ? '⏸' : '▶';
+    b.setAttribute('aria-label', podcastAudio && !podcastAudio.paused ? 'Pausa' : 'Ouvir podcast');
+  }
+
+  function setEpisode(value) {
+    const code = getEpisodeCode(value);
+    const b = document.getElementById('podcast-control');
+    if (!b) return;
+    if (!code) {
+      b.style.display = 'none';
+      currentEpisode = null;
+      return;
+    }
+    currentEpisode = code;
+    b.style.display = 'inline-block';
+    b.disabled = false;
+    updateButton();
+  }
+
+  function installButton() {
+    if (document.getElementById('podcast-control')) return;
+    const b = document.createElement('button');
+    b.id = 'podcast-control';
+    b.type = 'button';
+    b.textContent = '▶';
+    b.title = 'Ouvir podcast';
+    b.setAttribute('aria-label', 'Ouvir podcast');
+    b.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!currentEpisode) return;
+      const audio = ensureAudio();
+      const src = AUDIO_DIR + currentEpisode + '.mp3';
+      if (!audio.src.endsWith('/' + encodeURIComponent(currentEpisode) + '.mp3')) {
+        audio.src = src;
+        audio.load();
+      }
+      if (audio.paused) audio.play().catch(() => {});
+      else audio.pause();
+      updateButton();
+    });
+
+    const candidates = [
+      document.querySelector('#manual-navigation'),
+      document.querySelector('.manual-navigation'),
+      document.querySelector('[class*="manual"]'),
+      document.querySelector('nav')
+    ].filter(Boolean);
+    const target = candidates[0];
+    if (target) {
+      target.appendChild(b);
+      return;
+    }
+    document.body.appendChild(b);
+  }
+
+  // Observe the page because OpenVGal updates the current artwork dynamically.
+  const observer = new MutationObserver(function () {
+    installButton();
+    const text = document.body ? document.body.innerText : '';
+    const code = getEpisodeCode(text);
+    if (code && code !== currentEpisode) setEpisode(code);
+  });
+
+  function start() {
+    installButton();
+    observer.observe(document.body, {subtree: true, childList: true, characterData: true});
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+
+  window.MuseuPodcast = { setEpisode };
+})();
+</script>
