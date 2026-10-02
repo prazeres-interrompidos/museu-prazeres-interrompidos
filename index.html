@@ -3,7 +3,7 @@
  <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Museu Virtual dos Livros | Prazeres Interrompidos</title>
+	<title>Virtual 3D Art Gallery | OpenVGal by LB Artworks</title>
 	<meta name="description" content="Explore a stunning 3D virtual tour of your art gallery. Experience interactive WebGL visuals with OpenVGal immersive 3D environment.">
 	<meta name="keywords" content="3D virtual gallery, WebGL environment, interactive 3D model, 3D virtual photo gallery, 3D virtual art gallery">
 	<meta name="robots" content="index, follow">
@@ -12,13 +12,13 @@
 	     runtime. Both tags are created further down, and only when
 	     window.openvgal_location is an absolute https URL. -->
 	<!-- Open Graph -->
-	<meta property="og:title" content="Museu Virtual dos Livros | Prazeres Interrompidos">
+	<meta property="og:title" content="Interactive 3D Virtual Gallery | OpenVGAL">
 	<meta property="og:description" content="Step into a fully immersive 3D environment. Explore our WebGL-powered virtual tour of an art gallery.">
 	<meta property="og:image" content="preview.jpg">
 	<meta property="og:type" content="website">
 	<!-- Twitter Card -->
 	<meta name="twitter:card" content="summary_large_image">
-	<meta name="twitter:title" content="Museu Virtual dos Livros | Prazeres Interrompidos">
+	<meta name="twitter:title" content="3D Virtual Gallery | OpenVGAL">
 	<meta name="twitter:description" content="Experience an interactive 3D virtual gallery powered by WebGL. Explore now!">
 	<meta name="twitter:image" content="preview.jpg">
 	<!-- Structured Data -->
@@ -589,7 +589,7 @@
 
     <div id="map-modal">
         <div id="map-header">
-            <span id="map-title">Mapa do Museu</span>
+            <span id="map-title">Gallery Map</span>
             <button id="map-close" onclick="toggleMap()">&times;</button>
         </div>
         <div id="map-grid"></div>
@@ -655,12 +655,12 @@
 
             var nameEl = document.createElement('p');
             nameEl.className = 'map-card-name';
-            nameEl.textContent = galleryName === 'root' ? 'Sala Principal' : galleryName.replace(/#/g, ' ');
+            nameEl.textContent = galleryName === 'root' ? 'Main Hall' : galleryName.replace(/#/g, ' ');
             info.appendChild(nameEl);
 
             var countEl = document.createElement('p');
             countEl.className = 'map-card-count';
-            countEl.textContent = imageKeys.length + (imageKeys.length === 1 ? ' obra' : ' obras');
+            countEl.textContent = imageKeys.length + (imageKeys.length === 1 ? ' artwork' : ' artworks');
             info.appendChild(countEl);
 
             card.appendChild(info);
@@ -702,5 +702,5 @@
         }
     })();
     </script>
-  <script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a43b8c33c83e522b',t:'MTc5MDg1ODU1MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+  </body>
 </html>
