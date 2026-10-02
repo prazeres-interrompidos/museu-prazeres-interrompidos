@@ -457,15 +457,6 @@ var _loadPhase = { artworks: false, lights: false, active: false };
 
 function beginTemplateLoad(){
 	_loadPhase = { artworks: false, lights: false, active: true };
-
-	// The template has already been loaded when this phase begins.
-	// Keep the template indicator at 100% instead of displaying 0%.
-	percentage_template = 100;
-	var templateBar = document.getElementById("loadingBar_template");
-	var templateText = document.getElementById("percentLoaded_template");
-	if (templateBar) templateBar.style.width = "100%";
-	if (templateText) templateText.textContent = "100%";
-
 	setLightsProgress(0);
 }
 
