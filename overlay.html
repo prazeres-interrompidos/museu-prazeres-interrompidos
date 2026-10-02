@@ -4,13 +4,12 @@
         <p id="artwork-info"></p>
     </div>
     <div class="overlay-section" id="navigation-section">
-        <p>Navegação</p>
+        <p>Navegação manual</p>
         <div class="nav-buttons">
             <button class="nav-button" onclick="manual_move_backward()">&#x25C0;</button>
             <button class="nav-button" onclick="manual_move_forward()">&#x25B6;</button>
-            <button class="nav-button podcast-button" type="button" title="Ouvir podcast" aria-label="Ouvir podcast" onclick="toggleEpisodeAudio()" disabled>▶</button>
             <button class="nav-button cinematic-button" type="button"
-                    title="Visita cinematográfica" aria-label="Visita cinematográfica"
+                    title="Cinematic visit" aria-label="Cinematic visit"
                     onclick="if(typeof CB_cinematic_visit==='function')CB_cinematic_visit()">
                 <svg viewBox="0 0 24 24" width="24" height="24" fill="none"
                      stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"
@@ -26,14 +25,23 @@
     <div class="overlay-section" id="help-section">
         <button class="help-button" onclick="toggleHelp()">Ajuda</button>
         <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.5rem;cursor:pointer;font-size:0.7rem;color:#ccc;">
-            <input type="checkbox" id="plaquesToggle" onchange="if(typeof togglePlaques==='function')togglePlaques(this)" style="accent-color:oklch(0.66 0.075 64);"> Plaques
+            <input type="checkbox" id="plaquesToggle" onchange="if(typeof togglePlaques==='function')togglePlaques(this)" style="accent-color:oklch(0.66 0.075 64);"> Legenda
         </label>
     </div>
+
+    <button id="musicToggle" type="button"
+            style="position:absolute;left:calc(100% + 15px);bottom:0;z-index:99999;
+                   border:1px solid rgba(255,255,255,.35);border-radius:20px;
+                   background:rgba(25,25,25,.82);color:#fff;padding:.55rem .9rem;
+                   font:600 .78rem system-ui,sans-serif;cursor:pointer;
+                   box-shadow:0 3px 12px rgba(0,0,0,.3);"
+            title="Ligar música" aria-label="Ligar música"
+            onclick="(function(b){var a=document.getElementById('museumMusic');if(!a)return;if(a.paused||a.muted){a.muted=false;a.volume=0.35;var p=a.play();if(p&&p.catch)p.catch(function(){});b.textContent='🔊 Ligar música';b.title='Desligar música';b.setAttribute('aria-label','Desligar música');}else{a.pause();b.textContent='🔇 Desligar música';b.title='Ligar música';b.setAttribute('aria-label','Ligar música');}})(this)">🔇 Desligar música</button>
+    <audio id="museumMusic" src="Dream.mp3" autoplay loop preload="auto" playsinline
+           onloadedmetadata="this.volume=0.35;this.play().then(function(){var b=document.getElementById('musicToggle');if(b){b.textContent='🔊 Ligar música';b.title='Desligar música';}}).catch(function(){})"
+           onplay="var b=document.getElementById('musicToggle');if(b){b.textContent='🔊 Ligar música';b.title='Desligar música';}"
+           onpause="var b=document.getElementById('musicToggle');if(b){b.textContent='🔇 Desligar música';b.title='Ligar música';}"></audio>
 </div>
-<style>
-.podcast-button:disabled{opacity:.4;cursor:default;}
-.podcast-button{font-size:18px;line-height:1;}
-</style>
 
 <div id="help-popup">
     <div class="language-buttons">
@@ -90,73 +98,5 @@
         </div>
     </div>
     
-    <button class="close-button" onclick="toggleHelp()">Close</button>
+    <button class="close-button" onclick="toggleHelp()">Fechar</button>
 </div>
-<!-- Música ambiente do museu -->
-<audio id="museumAmbientMusic" loop preload="auto" style="display:none;">
-    <source src="Dream.mp3" type="audio/mpeg">
-</audio>
-
-<button id="museumMusicToggle" type="button" title="Ligar/desligar música ambiente" aria-label="Ligar/desligar música ambiente">
-    🔊
-</button>
-
-<style>
-#museumMusicToggle {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
-    z-index: 99999;
-    width: 42px;
-    height: 42px;
-    border: 1px solid rgba(255,255,255,.35);
-    border-radius: 50%;
-    background: rgba(20,20,20,.72);
-    color: #fff;
-    cursor: pointer;
-    font-size: 18px;
-    backdrop-filter: blur(4px);
-}
-#museumMusicToggle:hover { background: rgba(20,20,20,.9); }
-</style>
-
-<script>
-(function () {
-    const audio = document.getElementById('museumAmbientMusic');
-    const button = document.getElementById('museumMusicToggle');
-    if (!audio || !button) return;
-
-    audio.volume = 0.12;
-    let started = false;
-
-    function updateButton() {
-        button.textContent = audio.muted ? '🔇' : '🔊';
-        button.title = audio.muted ? 'Ligar música ambiente' : 'Desligar música ambiente';
-    }
-
-    function startMusic() {
-        if (started || audio.muted) return;
-        audio.play().then(function () {
-            started = true;
-            updateButton();
-        }).catch(function () {
-            // O navegador pode bloquear o autoplay; tentaremos novamente no próximo clique.
-        });
-    }
-
-    button.addEventListener('click', function (event) {
-        event.stopPropagation();
-        if (audio.paused) {
-            audio.muted = false;
-            audio.play().then(function () { started = true; updateButton(); }).catch(function () {});
-        } else {
-            audio.muted = !audio.muted;
-            updateButton();
-        }
-    });
-
-    document.addEventListener('click', startMusic, { once: true, capture: true });
-    document.addEventListener('keydown', startMusic, { once: true, capture: true });
-    updateButton();
-})();
-</script>
