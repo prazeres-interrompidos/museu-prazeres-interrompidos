@@ -1,25 +1,22 @@
-MUSEU VIRTUAL PRAZERES INTERROMPIDOS — ARQUITETURA V2
+MUSEU VIRTUAL PRAZERES INTERROMPIDOS — ARQUITETURA V3
 
-O que há neste pacote:
-1. index.html
-   - mantém o sistema OpenVGal e a navegação existente;
-   - acrescenta o carregamento de museum_architecture.js.
+Substituir no repositório:
+    museum_architecture.js
 
-2. museum_architecture.js
-   - esconde a arquitectura antiga do template;
-   - constrói a arquitectura do museu directamente em Babylon.js;
-   - cria portas clicáveis com os nomes d_<sala>_<índice>, para reutilizar
-     o sistema de navegação existente;
-   - cria o Átrio dos Livros, salas, paredes, portas, molduras, iluminação,
-     elementos decorativos e uma primeira versão da entrada/fachada.
+Não é necessário substituir:
+    index.html
+    room_builder_aux.js
 
-IMPORTANTE
-- Não apagar os restantes ficheiros do museu.
-- Substituir apenas o index.html atual pelo index.html deste pacote.
-- Copiar museum_architecture.js para a raiz do projeto.
-- O ficheiro room_builder_aux.js existente mantém-se.
-- Depois de publicar no GitHub Pages, fazer Ctrl+F5 no navegador.
+A V3 mantém o motor OpenVGal, a navegação e o sistema de capas das salas.
+A sala root passa a ser construída integralmente por código e não usa a arquitetura
+visual do template antigo.
 
-Esta é a primeira versão da nova arquitectura. A navegação OpenVGal é
-preservada; a arquitectura deixa de depender visualmente das portas do
-template antigo.
+Importante:
+1. Fazer uma cópia do museum_architecture.js atual antes de substituir.
+2. Copiar o novo museum_architecture.js para a raiz do repositório.
+3. No GitHub Desktop, fazer Commit e depois Push origin.
+4. Aguardar o GitHub Pages publicar.
+5. No navegador, usar Ctrl+F5.
+
+A root não inicia o carregamento do template antigo. O carregamento visual da root
+é encerrado directamente depois da construção da arquitectura própria.
