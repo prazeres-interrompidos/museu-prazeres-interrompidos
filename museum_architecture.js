@@ -1,268 +1,290 @@
-/* Museu Virtual Prazeres Interrompidos
- * Architectural shell for the main museum hall.
- * Keeps the existing OpenVGal artwork/gallery engine and replaces only the
- * root-room presentation with a purpose-built museum building.
+
+/*
+ * Museu Virtual Prazeres Interrompidos
+ * Arquitetura procedural — substitui o template 3D por uma arquitectura
+ * construída directamente em Babylon.js, mantendo o sistema de navegação
+ * OpenVGal (nomes d_<sala>_<indice>).
+ *
+ * Este ficheiro é um "adaptador": é carregado depois de room_builder_aux.js
+ * e envolve populate_template(). Assim, não é necessário alterar o viewer
+ * OpenVGal nem o sistema de navegação.
  */
 (function () {
-  'use strict';
+  "use strict";
 
-  var ROOT_NAME = 'root';
-  var ARCH_ROOT = 'PI_MUSEUM_ARCHITECTURE';
-  var builtScene = null;
-
-  var rooms = [
-    ['Galeria I', 'Episódios 1–100'],
-    ['Galeria II', 'Episódios 101–200'],
-    ['Galeria III', 'Episódios 201–300'],
-    ['Galeria IV', 'Episódios 301–400'],
-    ['Galeria V', 'Episódios 401–500'],
-    ['Galeria VI', 'Episódios 501–600'],
-    ['Galeria Internacional', 'Literatura sem fronteiras'],
-    ['Galeria dos Autores', 'Autores e escritores'],
-    ['Galeria Temática', 'Percursos por temas'],
-    ['Livros Imaginários', 'Livros que poderiam existir'],
-    ['Sala de Escuta', 'Os episódios ganham vida'],
-    ['Exposições Temporárias', 'Exposições especiais']
-  ];
-
-  var palette = {
-    floor: '#171513',
-    floor2: '#2b2119',
-    wall: '#3b3937',
-    wallLight: '#57524d',
-    stone: '#c9c0b3',
-    stoneLight: '#e7dfd2',
-    brass: '#b8925d',
-    gold: '#d2b07a',
-    glass: '#93aebd',
-    darkGlass: '#1b2930',
-    banner: '#3d2027',
-    white: '#f4efe7',
-    ink: '#161311',
-    green: '#263a2d'
-  };
-
-  function hex(h) {
-    h = h.replace('#','');
-    return new BABYLON.Color3(parseInt(h.substr(0,2),16)/255, parseInt(h.substr(2,2),16)/255, parseInt(h.substr(4,2),16)/255);
-  }
+  var MUSEUM_ROOT = "__PI_MUSEUM_ROOT__";
 
   function mat(scene, name, color, opts) {
     opts = opts || {};
-    var m = new BABYLON.StandardMaterial(name, scene);
-    m.diffuseColor = hex(color);
-    m.specularColor = new BABYLON.Color3(opts.specular || 0.12, opts.specular || 0.12, opts.specular || 0.12);
-    if (opts.emissive) m.emissiveColor = hex(opts.emissive);
-    if (opts.alpha != null) { m.alpha = opts.alpha; m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND; }
+    var m = scene.getMaterialByName(name);
+    if (m) return m;
+    m = new BABYLON.StandardMaterial(name, scene);
+    m.diffuseColor = BABYLON.Color3.FromHexString(color);
+    m.specularColor = new BABYLON.Color3(opts.specular || 0.08, opts.specular || 0.08, opts.specular || 0.08);
+    m.roughness = opts.roughness == null ? 0.7 : opts.roughness;
+    if (opts.emissive) m.emissiveColor = BABYLON.Color3.FromHexString(opts.emissive);
     return m;
   }
 
-  function box(scene, name, x,y,z, sx,sy,sz, material, parent) {
-    var m = BABYLON.MeshBuilder.CreateBox(name, {width:sx,height:sy,depth:sz}, scene);
-    m.position.set(x,y,z); m.material = material; if(parent) m.parent=parent;
-    return m;
+  function box(scene, root, name, size, pos, material, collision) {
+    var b = BABYLON.MeshBuilder.CreateBox(name, {width:size[0], height:size[1], depth:size[2]}, scene);
+    b.position.set(pos[0], pos[1], pos[2]);
+    b.material = material;
+    b.parent = root;
+    b.checkCollisions = collision !== false;
+    b.isPickable = false;
+    b.metadata = Object.assign({}, b.metadata, { museumGenerated:true });
+    return b;
   }
 
-  function cyl(scene, name, x,y,z, diameter,height, material, parent, tess) {
-    var m = BABYLON.MeshBuilder.CreateCylinder(name, {diameter:diameter,height:height,tessellation:tess||32}, scene);
-    m.position.set(x,y,z); m.material=material; if(parent) m.parent=parent;
-    return m;
+  function cylinder(scene, root, name, diameter, height, pos, material) {
+    var c = BABYLON.MeshBuilder.CreateCylinder(name, {diameter:diameter, height:height, tessellation:48}, scene);
+    c.position.set(pos[0], pos[1], pos[2]);
+    c.material = material;
+    c.parent = root;
+    c.checkCollisions = true;
+    c.isPickable = false;
+    c.metadata = {museumGenerated:true};
+    return c;
   }
 
-  function text(scene, name, value, x,y,z, size, color, parent, rotY) {
-    if (!window.fontContent || !BABYLON.MeshBuilder.CreateText) return null;
-    var m = BABYLON.MeshBuilder.CreateText(name, value, window.fontContent, {size:size||0.45,resolution:8,depth:0.04,sideOrientation:BABYLON.Mesh.DOUBLESIDE}, scene);
-    m.position.set(x,y,z); m.material = mat(scene,name+'_mat',color||palette.white); if(parent)m.parent=parent;
-    if(rotY) m.rotation.y=rotY;
-    return m;
+  function text(scene, root, name, value, pos, size, color) {
+    if (!BABYLON.MeshBuilder.CreateText || typeof fontContent === "undefined") return null;
+    try {
+      var t = BABYLON.MeshBuilder.CreateText(name, value, fontContent, {
+        size:size || 0.28, resolution:8, depth:0.035,
+        sideOrientation:BABYLON.Mesh.DOUBLESIDE
+      }, scene);
+      t.position.set(pos[0],pos[1],pos[2]);
+      t.material = mat(scene, "__pi_text", color || "#efe8dc", {emissive:color || "#efe8dc"});
+      t.parent = root;
+      t.isPickable = false;
+      t.metadata = {museumGenerated:true};
+      return t;
+    } catch(e) {
+      console.warn("Museu: CreateText indisponível", e);
+      return null;
+    }
   }
 
-  function panel(scene, name, value, x,y,z,w,h, material, parent, rotY) {
-    var p = BABYLON.MeshBuilder.CreatePlane(name,{width:w,height:h,sideOrientation:BABYLON.Mesh.DOUBLESIDE},scene);
-    p.position.set(x,y,z); p.material=material; if(parent)p.parent=parent; if(rotY)p.rotation.y=rotY;
-    var tex = new BABYLON.DynamicTexture(name+'_tex',{width:1024,height:512},scene,false);
-    var ctx=tex.getContext(); ctx.clearRect(0,0,1024,512); ctx.fillStyle='#00000000'; ctx.fillRect(0,0,1024,512);
-    ctx.fillStyle='#f4efe7'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='bold 54px Georgia';
-    var parts=String(value).split('\n');
-    parts.forEach(function(t,i){ctx.fillText(t,512,220+i*68);});
-    tex.update();
-    var pm=mat(scene,name+'_panel', '#171513'); pm.diffuseTexture=tex; pm.emissiveTexture=tex; pm.disableLighting=true; pm.useAlphaFromDiffuseTexture=true;
-    p.material=pm; return p;
-  }
-
-  function arch(scene, parent, x,z, w,h, depth, label, target) {
-    var stone=mat(scene,'stone_'+x+'_'+z,palette.stone);
-    var dark=mat(scene,'door_'+x+'_'+z,palette.darkGlass,{specular:0.3});
-    var brass=mat(scene,'brass_'+x+'_'+z,palette.brass,{specular:0.55});
-    var baseY=0;
-    box(scene,'portal_left_'+x+'_'+z,x-w/2+0.32,h/2,z,0.64,h,stone,parent);
-    box(scene,'portal_right_'+x+'_'+z,x+w/2-0.32,h/2,z,0.64,h,stone,parent);
-    box(scene,'portal_top_'+x+'_'+z,x,h-0.32,z,w,0.64,depth,stone,parent);
-    box(scene,'door_'+x+'_'+z,x,h*0.40,z-0.01,w*0.52,h*0.80,0.10,dark,parent);
-    box(scene,'door_header_'+x+'_'+z,x,h*0.82,z-0.08,w*0.55,0.08,0.12,brass,parent);
-    var click=box(scene,'d_'+target+'_1',x,h*0.40,z-0.12,w*0.58,h*0.82,0.16,mat(scene,'click_'+x+'_'+z,'#000000',{alpha:0}),parent);
-    click.isPickable=true;
-    click.metadata={museumDoor:true,target:target};
-    click.actionManager=new BABYLON.ActionManager(scene);
-    click.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger,function(){
-      if(typeof window.galleryManager==='function') window.galleryManager({source:{name:'d_'+target+'_1'}});
-    }));
-    text(scene,'label_'+target.replace(/\s/g,'_'),label.replace(/#/g,' '),x,h+0.55,z-0.08,0.30,palette.ink,parent,0);
-    return click;
-  }
-
-  function hideOldRootTemplate(scene) {
-    // The imported template is useful for the individual galleries, but the root
-    // room is now entirely procedural. Keep cameras/lights and hide only meshes
-    // that came from the old room before the new architecture is built.
-    scene.meshes.slice().forEach(function(m){
-      if (!m || m.metadata && m.metadata.museumArchitecture) return;
-      if (m.name && (m.name.indexOf('T_')===0 || m.name.indexOf('d_')===0)) return;
-      // Artwork/frames are not expected in root; hide imported template geometry.
-      m.setEnabled(false);
+  function hideTemplate(scene) {
+    scene.meshes.slice().forEach(function(mesh) {
+      if (mesh.metadata && mesh.metadata.museumGenerated) return;
+      mesh.setEnabled(false);
+      mesh.checkCollisions = false;
+      mesh.isPickable = false;
     });
   }
 
-  function setRootCamera(scene) {
-    var camera = scene.activeCamera;
-    if (!camera) return;
-    camera.position = new BABYLON.Vector3(0,7.2,34);
-    if (camera.setTarget) camera.setTarget(new BABYLON.Vector3(0,5.0,0));
-    else camera.target = new BABYLON.Vector3(0,5.0,0);
-    camera.minZ=0.1; camera.maxZ=500;
+  function clearPrevious(scene) {
+    var old = scene.getTransformNodeByName(MUSEUM_ROOT);
+    if (old) old.dispose(false, true);
   }
 
-  function buildMuseum(scene) {
-    if (!scene || builtScene===scene) return;
-    builtScene=scene;
+  function addCrown(scene, root, x, z, material) {
+    var a = box(scene, root, "crown_a", [0.16,0.8,0.16], [x,4.55,z], material, false);
+    var b = box(scene, root, "crown_b", [0.9,0.12,0.16], [x,4.92,z], material, false);
+    a.rotation.z = 0;
+    return [a,b];
+  }
 
-    hideOldRootTemplate(scene);
-    var root=new BABYLON.TransformNode(ARCH_ROOT,scene);
+  function makeDoor(scene, root, destination, index, x, z, front, label, palette) {
+    var frameMat = mat(scene, "__pi_door_frame", "#9d7b55", {roughness:0.42});
+    var doorMat = mat(scene, "__pi_door", palette || "#33251d", {roughness:0.38});
+    var gold = mat(scene, "__pi_gold", "#b89562", {roughness:0.3, specular:0.25});
 
-    var floor=mat(scene,'museum_floor',palette.floor);
-    var floorWood=mat(scene,'museum_wood',palette.floor2);
-    var stone=mat(scene,'museum_stone',palette.stone);
-    var stoneLight=mat(scene,'museum_stone_light',palette.stoneLight);
-    var wall=mat(scene,'museum_wall',palette.wall);
-    var brass=mat(scene,'museum_brass',palette.brass,{specular:0.65});
-    var glass=mat(scene,'museum_glass',palette.glass,{specular:0.7,alpha:0.42});
-    var dark=mat(scene,'museum_dark',palette.darkGlass,{specular:0.35});
-    var green=mat(scene,'museum_green',palette.green);
+    // A real clickable architectural door. It is deliberately non-colliding:
+    // OpenVGal handles the click -> gallery transition.
+    var door = BABYLON.MeshBuilder.CreateBox("d_" + destination + "_" + index, {
+      width:1.55, height:2.65, depth:0.12
+    }, scene);
+    door.position.set(x,1.48,z);
+    door.material=doorMat;
+    door.parent=root;
+    door.checkCollisions=false;
+    door.isPickable=true;
+    door.metadata={museumGenerated:true, museumDoor:true, destination:destination};
 
-    // Main floor and central atrium.
-    box(scene,'museum_floor',0,-0.20,0,74,0.4,62,floor,root);
-    box(scene,'museum_wood_floor',0,0.01,0,62,0.08,48,floorWood,root);
-    cyl(scene,'atrium_floor',0,0.07,0,23,0.10,stoneLight,root,64);
-    cyl(scene,'atrium_ring',0,0.14,0,19,0.08,brass,root,64);
+    // frame
+    box(scene, root, "door_frame_l_"+index, [0.18,2.95,0.22], [x-0.88,1.5,z], frameMat, false);
+    box(scene, root, "door_frame_r_"+index, [0.18,2.95,0.22], [x+0.88,1.5,z], frameMat, false);
+    box(scene, root, "door_frame_t_"+index, [1.94,0.18,0.22], [x,2.92,z], frameMat, false);
+    box(scene, root, "door_inlay_"+index, [0.95,0.045,0.045], [x,1.48,z-(front?0.08:-0.08)], gold, false);
 
-    // Rear and side walls of the grand hall.
-    box(scene,'rear_wall',0,7,-27,74,14,0.65,wall,root);
-    box(scene,'left_wall',-36,7,0,0.65,14,54,wall,root);
-    box(scene,'right_wall',36,7,0,0.65,14,54,wall,root);
+    var labelZ=z-(front?0.09:-0.09);
+    text(scene, root, "door_text_"+index, label || destination.replace(/#/g," "), [x,3.22,labelZ], 0.19, "#f1e7d5");
+    return door;
+  }
 
-    // Ceiling beams and skylight.
-    for(var bx=-30; bx<=30; bx+=10) box(scene,'ceiling_beam_'+bx, bx,13.4,0,0.35,0.35,52,stone,root);
-    box(scene,'skylight_frame',0,13.5,0,20,0.25,10,brass,root);
-    box(scene,'skylight_glass',0,13.56,0,18,0.08,8,glass,root);
+  function addRoomShell(scene, root, roomName) {
+    var floor = mat(scene,"__pi_floor","#5a4535",{roughness:0.82});
+    var wall = mat(scene,"__pi_wall","#e9e0d2",{roughness:0.8});
+    var trim = mat(scene,"__pi_trim","#a88c68",{roughness:0.5});
+    var ceiling = mat(scene,"__pi_ceiling","#f4efe7",{roughness:0.9});
 
-    // Grand entrance/facade at the front.
-    box(scene,'facade_left',-18,7,28,2.4,14,1.0,stone,root);
-    box(scene,'facade_right',18,7,28,2.4,14,1.0,stone,root);
-    box(scene,'facade_top',0,13,28,38,2.0,1.0,stone,root);
-    box(scene,'entrance_glass',0,6.0,27.35,15,10,0.18,glass,root);
-    for(var cx=-16;cx<=16;cx+=4) cyl(scene,'front_col_'+cx,cx,7,27.0,0.65,13,stone,root,32);
-    // dome and drum
-    cyl(scene,'dome_drum',0,13.2,28,13,2.2,stone,root,48);
-    var dome=BABYLON.MeshBuilder.CreateSphere('dome',{diameter:16,segments:48,arc:0.5},scene); dome.position.set(0,14.1,28); dome.material=stoneLight; dome.scaling.y=0.75; dome.parent=root;
-    cyl(scene,'dome_finial',0,18.0,28,1.2,1.4,brass,root,32);
-    // steps
-    for(var st=0;st<5;st++) box(scene,'step_'+st,0,0.18+st*0.16,29.4+st*0.55,18-st*1.5,0.30,1.1,stoneLight,root);
+    var W=18, D=25, H=6;
+    box(scene,root,"floor",[W,0.18,D],[0,-0.12,0],floor,true);
+    box(scene,root,"ceiling",[W,0.18,D],[0,H,0],ceiling,false);
 
-    panel(scene,'museum_title','MUSEU VIRTUAL\nPRAZERES INTERROMPIDOS',0,9.6,27.18,12,3.2,dark,root);
-    text(scene,'entrance_motto','Livros · Ideias · Pessoas · Mundos',0,12.0,26.95,0.34,palette.white,root,0);
+    // Side walls.
+    box(scene,root,"wall_left",[0.35,H,D],[-W/2, H/2, 0],wall,true);
+    box(scene,root,"wall_right",[0.35,H,D],[W/2, H/2, 0],wall,true);
 
-    // Central book sculpture / spiral.
-    for(var s=0;s<18;s++){
-      var a=s*0.48, r=0.75+s*0.12;
-      var bx=r*Math.cos(a), bz=r*Math.sin(a);
-      box(scene,'book_'+s,bx,0.55+s*0.28,bz,2.6,0.18,0.75, s%2?stoneLight:brass,root);
+    // Back wall is split into sections to create a broad architectural portal.
+    box(scene,root,"back_left",[W/2-2.2,H,D*0.035],[-W/4-1.1,H/2,D/2],wall,true);
+    box(scene,root,"back_right",[W/2-2.2,H,D*0.035],[W/4+1.1,H/2,D/2],wall,true);
+    box(scene,root,"back_top",[4.4,H-2.7,D*0.035],[0,H-1.35,D/2],wall,true);
+
+    // cornices
+    box(scene,root,"cornice_l",[0.45,0.24,D],[-W/2+0.25,H-0.18,0],trim,false);
+    box(scene,root,"cornice_r",[0.45,0.24,D],[W/2-0.25,H-0.18,0],trim,false);
+
+    // central ceiling spine
+    box(scene,root,"ceiling_spine",[0.16,0.10,D-2],[0,H-0.05,0],trim,false);
+
+    // Room title.
+    var title = roomName === "root" ? "ÁTRIO DOS LIVROS" : roomName.replace(/#/g," ");
+    text(scene,root,"room_title",title,[0,4.55,D/2-0.08],0.38,"#4a3528");
+
+    return {W:W,D:D,H:H,floor:floor,wall:wall,trim:trim,ceiling:ceiling};
+  }
+
+  function buildRoot(scene, root, config) {
+    var shell=addRoomShell(scene,root,"root");
+    var gold=mat(scene,"__pi_gold_root","#b89562",{roughness:0.28,specular:0.28});
+    var stone=mat(scene,"__pi_stone","#d9d0c2",{roughness:0.82});
+    var dark=mat(scene,"__pi_dark","#2b211b",{roughness:0.55});
+
+    // Grand central circular compass / atrium.
+    cylinder(scene,root,"atrium_base",6.6,0.25,[0,0.08,0],stone);
+    cylinder(scene,root,"atrium_ring_1",5.0,0.18,[0,0.25,0],gold);
+    cylinder(scene,root,"atrium_ring_2",3.7,0.12,[0,0.36,0],stone);
+
+    // Central "book spiral" sculpture, deliberately light and procedural.
+    for(var i=0;i<8;i++){
+      var ang=i*Math.PI/4;
+      var r=1.25 + i*0.18;
+      var p=box(scene,root,"spiral_"+i,[1.8,0.18,0.55],[Math.cos(ang)*r,0.85+i*0.33,Math.sin(ang)*r],gold,false);
+      p.rotation.y=ang+Math.PI/2;
     }
-    cyl(scene,'sculpture_base',0,0.25,0,7,0.4,stoneLight,root,64);
-    text(scene,'atrium_title','ÁTRIO DOS LIVROS',0,3.0,-3.9,0.46,palette.ink,root,0);
 
-    // Garden/reading area along the rear wall.
-    box(scene,'reading_garden',0,0.08,-24.8,22,0.12,3.0,green,root);
-    for(var tx=-9;tx<=9;tx+=3){
-      cyl(scene,'garden_tree_'+tx,tx,1.0,-24.7,1.2,2.0,green,root,24);
-      cyl(scene,'garden_trunk_'+tx,tx,0.6,-24.7,0.28,1.1,brass,root,20);
+    // Main entrance portal at the back of the root hall.
+    box(scene,root,"entrance_header",[7.4,0.65,0.55],[0,4.75,shell.D/2-0.22],dark,false);
+    text(scene,root,"museum_name","MUSEU VIRTUAL\nPRAZERES INTERROMPIDOS",[0,4.82,shell.D/2-0.56],0.34,"#f2e9dc");
+
+    // Front façade suggestion: monumental doorway with columns.
+    var z=-shell.D/2+0.35;
+    box(scene,root,"facade_pediment",[10.5,0.8,0.55],[0,5.15,z],stone,false);
+    box(scene,root,"facade_step1",[9.0,0.25,2.0],[0,0.12,z-0.65],stone,true);
+    box(scene,root,"facade_step2",[7.8,0.20,1.3],[0,0.34,z-0.32],stone,true);
+    for(var c=-3;c<=3;c+=2){
+      cylinder(scene,root,"column_"+c,0.42,4.2,[c,2.2,z],stone);
     }
-    text(scene,'garden_label','JARDIM DA LEITURA',0,2.3,-25.7,0.34,palette.white,root,0);
+    text(scene,root,"facade_motto","LIVROS · IDEIAS · PESSOAS · MUNDOS",[0,4.55,z-0.42],0.22,"#4a3528");
 
-    // Gallery portals: six principal galleries on the two sides, with thematic rooms at rear.
-    var leftX=-29, rightX=29;
-    var y=0;
-    var zPositions=[-18,-6,6,18];
-    arch(scene,root,leftX,zPositions[0],6.4,7.0,0.6,'Galeria I','Galeria I');
-    arch(scene,root,leftX,zPositions[1],6.4,7.0,0.6,'Galeria III','Galeria III');
-    arch(scene,root,leftX,zPositions[2],6.4,7.0,0.6,'Galeria V','Galeria V');
-    arch(scene,root,leftX,zPositions[3],6.4,7.0,0.6,'Autores','Galeria dos Autores');
-    arch(scene,root,rightX,zPositions[0],6.4,7.0,0.6,'Galeria II','Galeria II');
-    arch(scene,root,rightX,zPositions[1],6.4,7.0,0.6,'Galeria IV','Galeria IV');
-    arch(scene,root,rightX,zPositions[2],6.4,7.0,0.6,'Galeria VI','Galeria VI');
-    arch(scene,root,rightX,zPositions[3],6.4,7.0,0.6,'Temática','Galeria Temática');
+    // Root doors from config.
+    var gallery=config["root"]||{};
+    var doors=Object.keys(gallery).filter(function(k){return gallery[k]&&gallery[k].resource_type==="door";});
+    if(!doors.length){
+      doors=Object.keys(config).filter(function(k){return k!=="Technical"&&k!=="root";}).map(function(k){return k;});
+    }
+    var radius=7.5;
+    doors.forEach(function(d,i){
+      var a=(-Math.PI/2)+(i/Math.max(1,doors.length))*Math.PI*2;
+      var x=Math.cos(a)*radius, z2=Math.sin(a)*radius;
+      var label=d.replace(/#/g," ");
+      makeDoor(scene,root,d,i,x,z2,false,label, i%2?"#3b2a23":"#2e2822");
+    });
+  }
 
-    // Rear thematic portals.
-    arch(scene,root,-12,-25.8,7.2,6.6,0.6,'Internacional','Galeria Internacional');
-    arch(scene,root,-3.9,-25.8,7.2,6.6,0.6,'Livros Imaginários','Livros Imaginários');
-    arch(scene,root,4.2,-25.8,7.2,6.6,0.6,'Sala de Escuta','Sala de Escuta');
-    arch(scene,root,12.3,-25.8,7.2,6.6,0.6,'Temporárias','Exposições Temporárias');
+  function buildGallery(scene, root, config, roomName) {
+    var shell=addRoomShell(scene,root,roomName);
+    var gallery=config[roomName]||{};
+    var doors=Object.keys(gallery).filter(function(k){return gallery[k]&&gallery[k].resource_type==="door";});
 
-    // Side gallery wings: low walls suggest the floor plan from the reference image.
-    for(var wing=-1; wing<=1; wing+=2){
-      var xx=wing*22;
-      for(var zz=-22;zz<=22;zz+=11){
-        box(scene,'wing_wall_'+wing+'_'+zz,xx,4.0,zz,0.35,8.0,8.5,wallLight(scene),root);
+    // Main return door is always present, so the visitor never gets trapped.
+    var backDest="root";
+    makeDoor(scene,root,backDest,0,0,-shell.D/2+0.12,true,"ÁTRIO DOS LIVROS","#3a2a22");
+
+    // Additional gallery doors form a small architectural sequence.
+    var extra=doors.filter(function(d){return d!==backDest;});
+    extra.slice(0,4).forEach(function(d,i){
+      var x=-5.2+i*3.45;
+      makeDoor(scene,root,d,i+1,x,shell.D/2-0.12,false,d.replace(/#/g," "),"#312722");
+    });
+
+    // Seating / plinths.
+    var bench=mat(scene,"__pi_bench","#4b3a2d",{roughness:0.8});
+    for(var i=0;i<3;i++) box(scene,root,"bench_"+i,[3.0,0.32,0.65],[0,0.18,-2+i*3.0],bench,true);
+
+    // Gallery wall accent bands.
+    var accent=mat(scene,"__pi_accent","#8e6f53",{roughness:0.62});
+    box(scene,root,"accent_back",[10,0.16,0.12],[0,0.72,shell.D/2-0.2],accent,false);
+    box(scene,root,"accent_left",[0.12,0.16,14],[-shell.W/2+0.2,0.72,0],accent,false);
+    box(scene,root,"accent_right",[0.12,0.16,14],[shell.W/2-0.2,0.72,0],accent,false);
+  }
+
+  function buildMuseumArchitecture(config, roomName, scene) {
+    if (!scene || !window.BABYLON) return;
+
+    hideTemplate(scene);
+    clearPrevious(scene);
+
+    var root=new BABYLON.TransformNode(MUSEUM_ROOT,scene);
+    root.metadata={museumGenerated:true};
+
+    if(roomName==="root") buildRoot(scene,root,config);
+    else buildGallery(scene,root,config,roomName);
+
+    // Neutral environment lighting; OpenVGal's lighting module can still add its own.
+    var hemi=scene.getLightByName("__pi_hemi");
+    if(!hemi){
+      hemi=new BABYLON.HemisphericLight("__pi_hemi",new BABYLON.Vector3(0,1,0),scene);
+      hemi.intensity=0.75;
+      hemi.diffuse=new BABYLON.Color3(1,0.95,0.88);
+      hemi.specular=new BABYLON.Color3(0.25,0.22,0.18);
+    }
+
+    // Small point lights for a warm museum feel.
+    for(var i=0;i<7;i++){
+      var light=scene.getLightByName("__pi_point_"+i);
+      if(!light){
+        light=new BABYLON.PointLight("__pi_point_"+i,new BABYLON.Vector3(
+          (i%3-1)*5,4.7, -8+i*2.5
+        ),scene);
+        light.diffuse=new BABYLON.Color3(1,0.82,0.62);
+        light.intensity=18;
+        light.range=14;
       }
     }
 
-    // Small directional signs.
-    panel(scene,'sign_left','GALERIAS\nI · III · V',-24,10,-1,5.0,2.0,dark,root,Math.PI/2);
-    panel(scene,'sign_right','GALERIAS\nII · IV · VI',24,10,-1,5.0,2.0,dark,root,-Math.PI/2);
-
-    // Museum lights. Use a restrained set of point/spot lights.
-    var hemi=new BABYLON.HemisphericLight('museum_hemi',new BABYLON.Vector3(0,1,0),scene); hemi.intensity=0.55; hemi.diffuse=hex('#fff4e6'); hemi.groundColor=hex('#221b16');
-    for(var lx=-24;lx<=24;lx+=12){
-      var pl=new BABYLON.PointLight('museum_light_'+lx,new BABYLON.Vector3(lx,11,0),scene); pl.intensity=0.65; pl.range=30; pl.diffuse=hex('#ffe2b7');
+    // Tell the existing loader that the architecture is ready.
+    if(typeof setLightsProgress==="function") setLightsProgress(100);
+    if(typeof beginTemplateLoad==="function") {
+      // The legacy name is retained for compatibility; no GLB is used by this layer.
     }
-
-    root.getChildMeshes().forEach(function(m){m.metadata=Object.assign({},m.metadata||{},{museumArchitecture:true});});
-    setRootCamera(scene);
-    scene.metadata=Object.assign({},scene.metadata||{},{prazeresInterrompidosMuseum:true});
-    console.log('Museu Virtual Prazeres Interrompidos: arquitectura construída.');
   }
 
-  function wallLight(scene){ return mat(scene,'wing_wall_mat',palette.wallLight); }
+  // Public hook.
+  window.buildMuseumArchitecture=buildMuseumArchitecture;
 
-  function install() {
-    if (typeof window.populate_template !== 'function') { setTimeout(install,250); return; }
-    if (window.__PI_architecture_installed) return;
-    window.__PI_architecture_installed=true;
+  // Wrap the existing room builder without replacing the OpenVGal viewer.
+  function installWrapper(){
+    if(typeof window.populate_template !== "function"){
+      setTimeout(installWrapper,50);
+      return;
+    }
+    if(window.populate_template.__museumWrapped) return;
     var original=window.populate_template;
-    window.populate_template_original=original;
-    window.populate_template=function(config_file,room_name,scene){
-      if (room_name===ROOT_NAME) {
-        beginTemplateLoad();
-        buildMuseum(scene);
-        // Root has no artwork loading phase; mark it complete immediately.
-        percentage_artwork=100;
-        var a=document.getElementById('percentLoaded_artwork'), b=document.getElementById('loadingBar_artwork');
-        if(a)a.textContent='100%'; if(b)b.style.width='100%';
-        markArtworksDone();
-        return;
-      }
-      return original(config_file,room_name,scene);
+    var wrapped=function(config_file,room_name,scene){
+      try { buildMuseumArchitecture(config_file,room_name,scene); }
+      catch(e){ console.error("Museu: erro na arquitectura",e); }
+      return original.apply(this,arguments);
     };
+    wrapped.__museumWrapped=true;
+    window.populate_template=wrapped;
+    console.log("Museu: arquitectura procedural instalada.");
   }
 
-  install();
+  installWrapper();
 })();
