@@ -106,124 +106,74 @@
 </div>
 
 
-<style id="podcast-control-style">
-  #podcast-control {
-    margin-left: 10px;
-    width: 38px;
-    height: 38px;
-    border: 0;
+<!-- Música ambiente do museu -->
+<audio id="museumAmbientMusic" loop preload="auto" style="display:none;">
+    <source src="Dream.mp3" type="audio/mpeg">
+</audio>
+
+<button id="museumMusicToggle" type="button"
+        title="Ligar/desligar música ambiente"
+        aria-label="Ligar/desligar música ambiente">🔊</button>
+
+<style>
+#museumMusicToggle {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 99999;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(255,255,255,.35);
     border-radius: 50%;
-    background: rgba(0,0,0,.72);
+    background: rgba(20,20,20,.72);
     color: #fff;
     cursor: pointer;
     font-size: 18px;
-    line-height: 38px;
-    text-align: center;
-    display: none;
-    vertical-align: middle;
-  }
-  #podcast-control:hover { background: rgba(0,0,0,.9); }
-  #podcast-control:disabled { opacity: .45; cursor: default; }
+    backdrop-filter: blur(4px);
+}
+#museumMusicToggle:hover { background: rgba(20,20,20,.9); }
 </style>
+
 <script>
 (function () {
-  const AUDIO_DIR = 'EPISÓDIOS PARA O MUSEU/';
-  let podcastAudio = null;
-  let currentEpisode = null;
+    const audio = document.getElementById('museumAmbientMusic');
+    const button = document.getElementById('museumMusicToggle');
+    if (!audio || !button) return;
 
-  function getEpisodeCode(value) {
-    if (!value) return null;
-    const match = String(value).match(/(^|[^A-Za-z0-9])(E\d+)(?=\s|[-–—:(.]|$)/i);
-    return match ? match[2].toUpperCase() : null;
-  }
+    audio.volume = 0.12;
+    let started = false;
 
-  function ensureAudio() {
-    if (!podcastAudio) {
-      podcastAudio = document.createElement('audio');
-      podcastAudio.preload = 'none';
-      podcastAudio.addEventListener('ended', updateButton);
-      podcastAudio.addEventListener('play', updateButton);
-      podcastAudio.addEventListener('pause', updateButton);
-      document.body.appendChild(podcastAudio);
+    function updateButton() {
+        button.textContent = audio.muted ? '🔇' : '🔊';
+        button.title = audio.muted ? 'Ligar música ambiente' : 'Desligar música ambiente';
+        button.setAttribute('aria-label', button.title);
     }
-    return podcastAudio;
-  }
 
-  function updateButton() {
-    const b = document.getElementById('podcast-control');
-    if (!b) return;
-    b.textContent = podcastAudio && !podcastAudio.paused ? '⏸' : '▶';
-    b.setAttribute('aria-label', podcastAudio && !podcastAudio.paused ? 'Pausa' : 'Ouvir podcast');
-  }
-
-  function setEpisode(value) {
-    const code = getEpisodeCode(value);
-    const b = document.getElementById('podcast-control');
-    if (!b) return;
-    if (!code) {
-      b.style.display = 'none';
-      currentEpisode = null;
-      return;
+    function startMusic() {
+        if (started || audio.muted) return;
+        audio.play().then(function () {
+            started = true;
+            updateButton();
+        }).catch(function () {});
     }
-    currentEpisode = code;
-    b.style.display = 'inline-block';
-    b.disabled = false;
-    updateButton();
-  }
 
-  function installButton() {
-    if (document.getElementById('podcast-control')) return;
-    const b = document.createElement('button');
-    b.id = 'podcast-control';
-    b.type = 'button';
-    b.textContent = '▶';
-    b.title = 'Ouvir podcast';
-    b.setAttribute('aria-label', 'Ouvir podcast');
-    b.addEventListener('click', function (ev) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (!currentEpisode) return;
-      const audio = ensureAudio();
-      const src = AUDIO_DIR + currentEpisode + '.mp3';
-      if (!audio.src.endsWith('/' + encodeURIComponent(currentEpisode) + '.mp3')) {
-        audio.src = src;
-        audio.load();
-      }
-      if (audio.paused) audio.play().catch(() => {});
-      else audio.pause();
-      updateButton();
+    button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        if (audio.paused) {
+            audio.muted = false;
+            audio.play().then(function () {
+                started = true;
+                updateButton();
+            }).catch(function () {});
+        } else {
+            audio.muted = !audio.muted;
+            updateButton();
+        }
     });
 
-    const candidates = [
-      document.querySelector('#manual-navigation'),
-      document.querySelector('.manual-navigation'),
-      document.querySelector('[class*="manual"]'),
-      document.querySelector('nav')
-    ].filter(Boolean);
-    const target = candidates[0];
-    if (target) {
-      target.appendChild(b);
-      return;
-    }
-    document.body.appendChild(b);
-  }
-
-  // Observe the page because OpenVGal updates the current artwork dynamically.
-  const observer = new MutationObserver(function () {
-    installButton();
-    const text = document.body ? document.body.innerText : '';
-    const code = getEpisodeCode(text);
-    if (code && code !== currentEpisode) setEpisode(code);
-  });
-
-  function start() {
-    installButton();
-    observer.observe(document.body, {subtree: true, childList: true, characterData: true});
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
-
-  window.MuseuPodcast = { setEpisode };
+    document.addEventListener('click', startMusic, { once: true, capture: true });
+    document.addEventListener('keydown', startMusic, { once: true, capture: true });
+    updateButton();
 })();
 </script>
+
