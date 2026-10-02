@@ -267,198 +267,11 @@ function CB_cinematic_visit(){
 	else startCinematicVisit();
 }
 
-
-
-// ==========================================================================
-// Podcast dos episódios
-// Associação por código E01, E02, E06, E544, E1000, ...
-// ==========================================================================
-
-const MUSEU_AUDIO_DIR = 'EPISÓDIOS PARA O MUSEU/';
-let museumPodcastAudio = null;
-let museumCurrentEpisode = null;
-let museumAudioIndexPromise = null;
-
-function extractEpisodeCode(value) {
-    if (!value) return null;
-    const match = String(value).match(/(^|[^A-Za-z0-9])(E\d+)(?=\s|[-–—:(.]|$)/i);
-    return match ? match[2].toUpperCase() : null;
-}
-
-function museumPodcastButton() {
-    return document.querySelector('.podcast-button');
-}
-
-function updateEpisodeAudioButton() {
-    const btn = museumPodcastButton();
-    const icon = document.getElementById('podcast-icon');
-    if (!btn || !icon) return;
-
-    const playing = museumPodcastAudio && !museumPodcastAudio.paused;
-    icon.textContent = playing ? '\u23F8' : '\u25B6';
-    btn.title = playing ? 'Pausa' : 'Ouvir podcast';
-    btn.setAttribute('aria-label', playing ? 'Pausa' : 'Ouvir podcast');
-}
-
-function ensureEpisodeAudio() {
-    if (!museumPodcastAudio) {
-        museumPodcastAudio = document.createElement('audio');
-        museumPodcastAudio.preload = 'none';
-        museumPodcastAudio.addEventListener('play', updateEpisodeAudioButton);
-        museumPodcastAudio.addEventListener('pause', updateEpisodeAudioButton);
-        museumPodcastAudio.addEventListener('ended', updateEpisodeAudioButton);
-        document.body.appendChild(museumPodcastAudio);
-    }
-    return museumPodcastAudio;
-}
-
-// Derive a GitHub repository when the museum is being served from GitHub Pages.
-// This lets us find the actual MP3 filename even when it is not simply E544.mp3.
-function museumGitHubRepo() {
-    if (window.MUSEU_GITHUB_REPO) return window.MUSEU_GITHUB_REPO;
-
-    const host = window.location.hostname;
-    if (!host.endsWith('.github.io')) return null;
-
-    const owner = host.slice(0, -'.github.io'.length);
-    const parts = window.location.pathname.split('/').filter(Boolean);
-    const repo = parts.length ? parts[0] : owner;
-
-    return owner && repo ? owner + '/' + repo : null;
-}
-
-async function museumGetAudioIndex() {
-    if (museumAudioIndexPromise) return museumAudioIndexPromise;
-
-    const repo = museumGitHubRepo();
-    if (!repo) return [];
-
-    const apiUrl =
-        'https://api.github.com/repos/' + repo +
-        '/contents/' + encodeURIComponent('EPISÓDIOS PARA O MUSEU');
-
-    museumAudioIndexPromise = fetch(apiUrl, {
-        headers: { 'Accept': 'application/vnd.github+json' },
-        cache: 'force-cache'
-    })
-    .then(function (r) {
-        if (!r.ok) throw new Error('GitHub audio directory unavailable');
-        return r.json();
-    })
-    .then(function (items) {
-        return Array.isArray(items) ? items.filter(function (item) {
-            return item && item.type === 'file' &&
-                   /\.mp3$/i.test(item.name || '');
-        }) : [];
-    })
-    .catch(function () {
-        return [];
-    });
-
-    return museumAudioIndexPromise;
-}
-
-async function museumFindAudioUrl(code) {
-    // First support the simple E544.mp3 convention if used in the future.
-    const simpleUrl = MUSEU_AUDIO_DIR + encodeURIComponent(code) + '.mp3';
-
-    const files = await museumGetAudioIndex();
-
-    if (files.length) {
-        const found = files.find(function (item) {
-            return extractEpisodeCode(item.name) === code;
-        });
-
-        if (found) {
-            if (found.download_url) return found.download_url;
-
-            const repo = museumGitHubRepo();
-            if (repo) {
-                return 'https://raw.githubusercontent.com/' + repo +
-                    '/main/' + encodeURI('EPISÓDIOS PARA O MUSEU/' + found.name);
-            }
-        }
-    }
-
-    return simpleUrl;
-}
-
-async function prepareEpisodeAudio(code) {
-    const audio = ensureEpisodeAudio();
-    const url = await museumFindAudioUrl(code);
-
-    if (museumCurrentEpisode !== code || audio.dataset.sourceUrl !== url) {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.src = url;
-        audio.dataset.sourceUrl = url;
-        museumCurrentEpisode = code;
-        audio.load();
-    }
-    return audio;
-}
-
-function setEpisodeAudioForArtwork(title) {
-    const btn = museumPodcastButton();
-    if (!btn) return;
-
-    const code = extractEpisodeCode(title);
-    if (!code) {
-        btn.disabled = true;
-        museumCurrentEpisode = null;
-        if (museumPodcastAudio) {
-            museumPodcastAudio.pause();
-            museumPodcastAudio.removeAttribute('src');
-            museumPodcastAudio.load();
-        }
-        updateEpisodeAudioButton();
-        return;
-    }
-
-    // The button is available as soon as an E-code is known.
-    btn.disabled = false;
-    btn.dataset.episode = code;
-
-    // If a different artwork/episode is selected, stop the previous episode.
-    if (museumCurrentEpisode && museumCurrentEpisode !== code && museumPodcastAudio) {
-        museumPodcastAudio.pause();
-        museumPodcastAudio.currentTime = 0;
-        museumPodcastAudio.removeAttribute('src');
-        museumPodcastAudio.load();
-        museumCurrentEpisode = null;
-    }
-
-    updateEpisodeAudioButton();
-}
-
-async function toggleEpisodeAudio() {
-    const btn = museumPodcastButton();
-    if (!btn || btn.disabled) return;
-
-    const code = btn.dataset.episode || museumCurrentEpisode;
-    if (!code) return;
-
-    const audio = await prepareEpisodeAudio(code);
-
-    if (audio.paused) {
-        audio.play().catch(function () {});
-    } else {
-        audio.pause();
-    }
-
-    updateEpisodeAudioButton();
-}
-
-
 // show metadata or other info
 function showInfoBox(title) {
     const el = document.getElementById("artwork-info");
     if (el) el.innerText = title;
-
-    // Keep the podcast button synchronized with the currently displayed artwork.
-    if (typeof setEpisodeAudioForArtwork === 'function') {
-        setEpisodeAudioForArtwork(title);
-    }
+    if (typeof window.setEpisodeAudioForArtwork === 'function') window.setEpisodeAudioForArtwork(title);
 }
 
 function hideInfoBox() {
@@ -500,7 +313,6 @@ function loadOverlay() {
         const helpPopup = document.getElementById('help-popup');
         if (helpPopup) helpPopup.style.display = 'none';
         hideInfoBox();
-        updateEpisodeAudioButton();
     };
 
     const fetchText = (url) => fetch(url).then(r => {
@@ -524,12 +336,4 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', loadOverlay);
 } else {
     loadOverlay();
-}
-
-// Museu Virtual dos Livros — episode code helper.
-// Recognises E01, E544, E1000, etc., independently of the rest of the filename.
-function extractEpisodeCode(value) {
-  if (!value) return null;
-  const match = String(value).match(/(^|[^A-Za-z0-9])(E\d+)(?=\s|[-–—:(.]|$)/i);
-  return match ? match[2].toUpperCase() : null;
-}
+}\n\n// ============================================================================\n// Podcast do episódio — associação exclusivamente pelo código E01, E02, ...\n// ============================================================================\n(function(){\n  let audio=null, currentCode=null, currentUrl=null, filesPromise=null;\n  function codeOf(v){\n    if(!v) return null;\n    const m=String(v).match(/(^|[^A-Za-z0-9])(E\\d+)(?=\\s|[-–—:(.]|$)/i);\n    return m?m[2].toUpperCase():null;\n  }\n  function button(){return document.querySelector('.podcast-button');}\n  function update(){\n    const b=button(); if(!b)return;\n    b.textContent=audio&&!audio.paused?'⏸':'▶';\n    b.title=audio&&!audio.paused?'Pausa':'Ouvir podcast';\n    b.setAttribute('aria-label',b.title);\n  }\n  function ensure(){\n    if(!audio){\n      audio=document.createElement('audio'); audio.preload='none';\n      audio.addEventListener('play',update); audio.addEventListener('pause',update); audio.addEventListener('ended',update);\n      document.body.appendChild(audio);\n    }\n    return audio;\n  }\n  function repo(){\n    if(window.MUSEU_GITHUB_REPO)return window.MUSEU_GITHUB_REPO;\n    const h=location.hostname; if(!/\\.github\\.io$/i.test(h))return null;\n    const owner=h.replace(/\\.github\\.io$/i,''); const p=location.pathname.split('/').filter(Boolean);\n    return owner+'/'+(p[0]||owner);\n  }\n  async function files(){\n    if(filesPromise)return filesPromise; const r=repo(); if(!r)return [];\n    const u='https://api.github.com/repos/'+r+'/contents/EPISÓDIOS%20PARA%20O%20MUSEU';\n    filesPromise=fetch(u,{headers:{Accept:'application/vnd.github+json'},cache:'force-cache'}).then(x=>x.ok?x.json():[]).then(a=>Array.isArray(a)?a.filter(x=>x.type==='file'&&/\\.mp3$/i.test(x.name)):[]).catch(()=>[]);\n    return filesPromise;\n  }\n  async function urlFor(code){\n    const a=await files(); const f=a.find(x=>codeOf(x.name)===code);\n    if(f&&f.download_url)return f.download_url;\n    return 'EPISÓDIOS PARA O MUSEU/'+encodeURIComponent(code)+'.mp3';\n  }\n  window.setEpisodeAudioForArtwork=function(title){\n    const b=button(); if(!b)return; const code=codeOf(title);\n    if(!code){b.disabled=true; b.style.display='none'; if(audio){audio.pause();audio.removeAttribute('src');audio.load();} currentCode=null;currentUrl=null;update();return;}\n    b.disabled=false;b.style.display='inline-flex';b.dataset.episode=code;\n    if(currentCode!==code&&audio){audio.pause();audio.removeAttribute('src');audio.load();currentUrl=null;}\n    currentCode=code;update();\n  };\n  window.toggleEpisodeAudio=async function(){\n    const b=button(); if(!b||b.disabled)return; const code=b.dataset.episode;if(!code)return; const a=ensure();\n    if(a.paused){\n      if(!currentUrl){currentUrl=await urlFor(code);a.src=currentUrl;a.load();}\n      try{await a.play();}catch(e){}\n    }else a.pause();\n    update();\n  };\n})();\n
