@@ -415,6 +415,27 @@
 				current_gallery=current_gallery.replace(regul_exp_tail,"");
 				current_gallery=current_gallery.replace(regul_exp_door, "");
 
+				// MUSEU VIRTUAL: the entrance is built directly by
+				// museum_architecture.js. Do NOT load the old GLB/template first.
+				// This check must happen before resource/template loading; otherwise
+				// the old template remains responsible for the 0% loading state and
+				// the new architecture is created only afterwards.
+				var museumDirectBuilt = false;
+				var museumEntrance = (typeof startGalleryName === 'function')
+					? startGalleryName(config_file_content)
+					: 'root';
+				if (current_gallery === museumEntrance && typeof window.buildPrazeresMuseum === 'function') {
+					console.log('[Prazeres] Building museum entrance directly; skipping legacy GLB/template.');
+					if (typeof ovgMark === 'function') ovgMark('building museum entrance');
+					window.buildPrazeresMuseum(scene);
+					museumDirectBuilt = true;
+					if (typeof window.finishPrazeresMuseumLoader === 'function') {
+						window.finishPrazeresMuseumLoader();
+					}
+					// Continue below only with camera/door wiring. The GLB/template
+					// loading branch is deliberately skipped for the entrance.
+				} else {
+
 				//hide info box
 				if (typeof hideInfoBox === 'function') hideInfoBox();
 
@@ -511,6 +532,7 @@
 					}
 
 
+				}
 
 				//reset camera position — honor a "Start" empty baked into the GLB if
 				//present, otherwise fall back to the default spawn point. The empty is
@@ -518,7 +540,10 @@
 				//so getAbsolutePosition/getDirection give the correct left-handed values.
 				const cam = scene.cameras[0];
 				const startNode = scene.getNodeByName('Start');
-				if (startNode) {
+				if (museumDirectBuilt) {
+					// museum_architecture.js already positioned the camera for the
+					// purpose-built entrance. Do not replace it with the GLB fallback.
+				} else if (startNode) {
 					startNode.computeWorldMatrix(true);
 					cam.position.copyFrom(startNode.getAbsolutePosition());
 					// Face the empty's local +X axis (its red arrow in Blender). X is the

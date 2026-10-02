@@ -414,6 +414,12 @@
     console.log('Museu Virtual Prazeres Interrompidos — arquitectura V3 construída.');
   }
 
+  // Public entry point used by openvgal-viewer.js. The entrance is built
+  // directly in Babylon and therefore must be callable before any GLB/template
+  // is loaded for the entrance room.
+  window.buildPrazeresMuseum = buildMuseum;
+  window.finishPrazeresMuseumLoader = finishRootLoader;
+
   function install() {
     if (installed) return;
     if (typeof window.populate_template !== 'function') {
