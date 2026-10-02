@@ -43,10 +43,15 @@ function getArtworkPose(idx){
 	const camera_distance = window.innerWidth>600 ? 4 : 6;
 	const camera_position = target_position.add(target_vector.scale(camera_distance));
 
+	const metadata = String(gallery[dict_items[idx]]["metadata"] || "");
+	const episodeCode = extractEpisodeCode(metadata);
+
 	return {
 		position: camera_position,
 		target: target_position,
-		title: "Title:  " + gallery[dict_items[idx]]["metadata"],
+		title: "Título:  " + metadata,
+		metadata: metadata,
+		episodeCode: episodeCode,
 		idx: idx,
 		count: n_items
 	};
@@ -64,6 +69,7 @@ function manual_move(){
 	camera.setTarget(pose.target);
 
 	showInfoBox(pose.title);
+	updateEpisodeAudio(pose.episodeCode);
 }
 
 function manual_move_backward(){
@@ -175,6 +181,7 @@ function cinematicLeg(){
 			// onAnimationEnd — also fires on .stop(), so guard on active state
 			if (!cinematic_active) return;
 			showInfoBox(pose.title);
+			updateEpisodeAudio(pose.episodeCode);
 			manual_navigation_idx = idx;   // ◀/▶ continue from here after the tour
 			cinematic_last_idx = idx;
 			if (cinematicArtworkCount() <= 1){
@@ -273,6 +280,146 @@ function showInfoBox(title) {
     if (el) el.innerText = title;
 }
 
+
+// ============================================================================
+// Podcast player — associates each artwork with its episode by the E-code.
+// Example: E544 (voz de ...) -> episode E544. Multiple artworks with E06
+// therefore share the same E06 audio file.
+// The audio filenames themselves are not required to match the artwork title.
+// ============================================================================
+const EPISODE_REPO_API = 'https://api.github.com/repos/prazeres-interrompidos/museu-prazeres-interrompidos/contents/EPIS%C3%93DIOS%20PARA%20O%20MUSEU';
+let episodeAudio = null;
+let episodeFiles = Object.create(null);
+let episodeFilesReady = false;
+let episodeFilesPromise = null;
+let currentEpisodeCode = null;
+
+function extractEpisodeCode(text) {
+    const m = String(text || '').match(/\bE(\d+)\b/i);
+    return m ? ('E' + m[1]) : null;
+}
+
+function ensureEpisodeAudio() {
+    if (!episodeAudio) {
+        episodeAudio = document.createElement('audio');
+        episodeAudio.id = 'episode-audio';
+        episodeAudio.preload = 'none';
+        episodeAudio.style.display = 'none';
+        document.body.appendChild(episodeAudio);
+        episodeAudio.addEventListener('ended', function () {
+            setEpisodeButtonState(false);
+        });
+        episodeAudio.addEventListener('pause', function () {
+            setEpisodeButtonState(false);
+        });
+        episodeAudio.addEventListener('play', function () {
+            setEpisodeButtonState(true);
+        });
+    }
+    return episodeAudio;
+}
+
+function setEpisodeButtonState(playing) {
+    const btn = document.querySelector('.podcast-button');
+    const icon = document.getElementById('podcast-icon');
+    if (!btn || !icon) return;
+    icon.textContent = playing ? '⏸' : '▶';
+    btn.title = playing ? 'Pausar podcast' : 'Ouvir podcast';
+    btn.setAttribute('aria-label', btn.title);
+    btn.classList.toggle('active', playing);
+}
+
+function setEpisodeButtonEnabled(enabled) {
+    const btn = document.querySelector('.podcast-button');
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.style.opacity = enabled ? '' : '0.45';
+    btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+}
+
+async function fetchEpisodePage(page) {
+    const url = EPISODE_REPO_API + '?ref=main&per_page=100&page=' + page;
+    const response = await fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } });
+    if (!response.ok) throw new Error('GitHub API ' + response.status);
+    return response.json();
+}
+
+async function loadEpisodeFiles() {
+    if (episodeFilesPromise) return episodeFilesPromise;
+    episodeFilesPromise = (async function () {
+        let page = 1;
+        while (true) {
+            const items = await fetchEpisodePage(page);
+            if (!Array.isArray(items) || items.length === 0) break;
+            items.forEach(function (item) {
+                if (!item || item.type !== 'file' || !/\.mp3$/i.test(item.name || '')) return;
+                const code = extractEpisodeCode(item.name);
+                if (!code) return;
+                // First file wins. This protects against accidental duplicate names/copies.
+                if (!episodeFiles[code]) episodeFiles[code] = item.download_url;
+            });
+            if (items.length < 100) break;
+            page++;
+        }
+        episodeFilesReady = true;
+        return episodeFiles;
+    })().catch(function (err) {
+        console.warn('Não foi possível carregar a lista de podcasts:', err);
+        episodeFilesReady = false;
+        return episodeFiles;
+    });
+    return episodeFilesPromise;
+}
+
+function updateEpisodeAudio(code) {
+    currentEpisodeCode = code || null;
+    ensureEpisodeAudio();
+    setEpisodeButtonState(false);
+    setEpisodeButtonEnabled(false);
+
+    if (!code) return;
+
+    if (episodeFilesReady) {
+        const url = episodeFiles[code];
+        if (url) {
+            episodeAudio.pause();
+            episodeAudio.src = url;
+            episodeAudio.load();
+            setEpisodeButtonEnabled(true);
+        }
+        return;
+    }
+
+    loadEpisodeFiles().then(function () {
+        if (currentEpisodeCode !== code) return;
+        const url = episodeFiles[code];
+        if (url) {
+            episodeAudio.src = url;
+            episodeAudio.load();
+            setEpisodeButtonEnabled(true);
+        }
+    });
+}
+
+function toggleEpisodeAudio() {
+    const audio = ensureEpisodeAudio();
+    if (!currentEpisodeCode) return;
+
+    const url = episodeFiles[currentEpisodeCode];
+    if (!url) return;
+
+    if (audio.paused) {
+        audio.play().catch(function (err) {
+            console.warn('O navegador não iniciou o podcast:', err);
+        });
+    } else {
+        audio.pause();
+    }
+}
+
+// Start building the episode index immediately. No audio is played automatically.
+loadEpisodeFiles();
+
 function hideInfoBox() {
     // Stop any running cinematic tour before the room swaps, so artwork indices
     // from the old gallery can't leak into the new one.
@@ -312,6 +459,14 @@ function loadOverlay() {
         const helpPopup = document.getElementById('help-popup');
         if (helpPopup) helpPopup.style.display = 'none';
         hideInfoBox();
+
+        // The overlay is injected after the gallery has often already selected
+        // its first artwork. Re-run the current manual position once the
+        // controls exist so the title and the podcast button are synchronised
+        // immediately on opening the gallery. This never starts audio.
+        if (typeof manual_move === 'function') {
+            setTimeout(function(){ manual_move(); }, 0);
+        }
     };
 
     const fetchText = (url) => fetch(url).then(r => {
