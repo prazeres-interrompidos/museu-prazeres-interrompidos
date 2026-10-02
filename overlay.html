@@ -1,10 +1,10 @@
 <div id="permanent-overlay">
     <div class="overlay-section" id="artwork-section">
-        <p>Artwork</p>
+        <p>Obra</p>
         <p id="artwork-info"></p>
     </div>
     <div class="overlay-section" id="navigation-section">
-        <p>Manual navigation</p>
+        <p>Navegação manual</p>
         <div class="nav-buttons">
             <button class="nav-button" onclick="manual_move_backward()">&#x25C0;</button>
             <button class="nav-button" onclick="manual_move_forward()">&#x25B6;</button>
@@ -23,29 +23,24 @@
         </div>
     </div>
     <div class="overlay-section" id="help-section">
-        <button class="help-button" onclick="toggleHelp()">Help</button>
+        <button class="help-button" onclick="toggleHelp()">Ajuda</button>
         <label style="display:flex;align-items:center;gap:0.4rem;margin-top:0.5rem;cursor:pointer;font-size:0.7rem;color:#ccc;">
-            <input type="checkbox" id="plaquesToggle" onchange="if(typeof togglePlaques==='function')togglePlaques(this)" style="accent-color:oklch(0.66 0.075 64);"> Plaques
+            <input type="checkbox" id="plaquesToggle" onchange="if(typeof togglePlaques==='function')togglePlaques(this)" style="accent-color:oklch(0.66 0.075 64);"> Legenda
         </label>
     </div>
-    <!-- Canonical "open threshold" mark, inlined: the overlay is injected into
-         pages that don't define the <symbol>, so <use> has nothing to reference. -->
-    <a id="overlay-attribution" href="https://openvgal.com" target="_blank" rel="noopener">
-        <svg viewBox="0 0 256 256" aria-hidden="true" focusable="false">
-            <polygon points="35.84,35.84 220.16,35.84 161.18,87.14 94.82,87.14" fill="oklch(0.985 0.004 80)"/>
-            <polygon points="35.84,35.84 94.82,87.14 94.82,153.5 35.84,220.16" fill="oklch(0.995 0.002 80)"/>
-            <polygon points="220.16,35.84 161.18,87.14 161.18,153.5 220.16,220.16" fill="oklch(0.995 0.002 80)"/>
-            <polygon points="35.84,220.16 220.16,220.16 161.18,153.5 94.82,153.5" fill="oklch(0.78 0.065 68)"/>
-            <rect x="94.82" y="87.14" width="66.36" height="66.36" fill="oklch(0.985 0.004 80)"/>
-            <line x1="35.84" y1="35.84" x2="94.82" y2="87.14" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
-            <line x1="220.16" y1="35.84" x2="161.18" y2="87.14" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
-            <line x1="35.84" y1="220.16" x2="94.82" y2="153.5" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
-            <line x1="220.16" y1="220.16" x2="161.18" y2="153.5" stroke="oklch(0.16 0.01 270)" stroke-width="4.84"/>
-            <rect x="94.82" y="87.14" width="66.36" height="66.36" fill="none" stroke="oklch(0.16 0.01 270)" stroke-width="5.76"/>
-            <rect x="35.84" y="35.84" width="184.32" height="184.32" fill="none" stroke="oklch(0.16 0.01 270)" stroke-width="6.91"/>
-        </svg>
-        <span>Made with OpenVGal</span>
-    </a>
+
+    <button id="musicToggle" type="button"
+            style="position:fixed;right:18px;bottom:18px;z-index:99999;
+                   border:1px solid rgba(255,255,255,.35);border-radius:20px;
+                   background:rgba(25,25,25,.82);color:#fff;padding:.55rem .9rem;
+                   font:600 .78rem system-ui,sans-serif;cursor:pointer;
+                   box-shadow:0 3px 12px rgba(0,0,0,.3);"
+            title="Ligar música" aria-label="Ligar música"
+            onclick="(function(b){var a=document.getElementById('museumMusic');if(!a)return;if(a.paused||a.muted){a.muted=false;a.volume=0.35;var p=a.play();if(p&&p.catch)p.catch(function(){});b.textContent='🔊 Ligar música';b.title='Desligar música';b.setAttribute('aria-label','Desligar música');}else{a.pause();b.textContent='🔇 Desligar música';b.title='Ligar música';b.setAttribute('aria-label','Ligar música');}})(this)">🔇 Desligar música</button>
+    <audio id="museumMusic" src="Dream.mp3" autoplay loop preload="auto" playsinline
+           onloadedmetadata="this.volume=0.35;this.play().then(function(){var b=document.getElementById('musicToggle');if(b){b.textContent='🔊 Ligar música';b.title='Desligar música';}}).catch(function(){})"
+           onplay="var b=document.getElementById('musicToggle');if(b){b.textContent='🔊 Ligar música';b.title='Desligar música';}"
+           onpause="var b=document.getElementById('musicToggle');if(b){b.textContent='🔇 Desligar música';b.title='Ligar música';}"></audio>
 </div>
 
 <div id="help-popup">
@@ -103,12 +98,5 @@
         </div>
     </div>
     
-    <button class="close-button" onclick="toggleHelp()">Close</button>
+    <button class="close-button" onclick="toggleHelp()">Fechar</button>
 </div>
-
-<!-- Background music: Museu Virtual dos Livros -->
-<div id="museum-music-control" style="position:fixed;right:1rem;bottom:1rem;z-index:99999;display:flex;align-items:center;gap:.45rem;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:.35rem .55rem;color:#fff;font:14px/1 sans-serif;backdrop-filter:blur(4px);">
-<button id="museum-music-button" type="button" aria-label="Ligar música" title="Ligar/desligar música" style="border:0;background:transparent;color:#fff;cursor:pointer;font-size:18px;padding:.15rem .25rem;">🔇</button><span id="museum-music-label">Música</span>
-<audio id="museum-background-music" loop preload="auto"><source src="Dream.mp3" type="audio/mpeg"></audio>
-</div>
-<script>(function(){const a=document.getElementById("museum-background-music"),b=document.getElementById("museum-music-button");if(!a||!b)return;a.volume=.30;function s(on){if(on){a.play().then(()=>{b.textContent="🔊";b.setAttribute("aria-label","Desligar música")}).catch(()=>{b.textContent="🔇"})}else{a.pause();b.textContent="🔇";b.setAttribute("aria-label","Ligar música")}}b.addEventListener("click",()=>s(a.paused));function start(){if(a.paused)s(true);document.removeEventListener("pointerdown",start);document.removeEventListener("keydown",start)}document.addEventListener("pointerdown",start,{once:true});document.addEventListener("keydown",start,{once:true})})();</script>
