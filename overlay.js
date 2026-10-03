@@ -64,6 +64,9 @@ function manual_move(){
 	camera.setTarget(pose.target);
 
 	showInfoBox(pose.title);
+
+	// Na navegação manual, cada obra passa automaticamente para o seu episódio.
+	playEpisodeForCurrentArtwork();
 }
 
 function manual_move_backward(){
@@ -76,6 +79,238 @@ function manual_move_forward(){
 	manual_move();
 }
 
+
+
+// ==========================================================================
+//  Episódios do podcast: ligação automática E### -> MP3
+// ==========================================================================
+
+const EPISODES_GITHUB_API =
+	'https://api.github.com/repos/prazeres-interrompidos/museu-prazeres-interrompidos/contents/' +
+	encodeURIComponent('EPISÓDIOS PARA O MUSEU') + '?ref=main';
+
+let episodeIndex = null;
+let episodeIndexPromise = null;
+let episodeCurrentCode = null;
+let episodeCurrentUrl = null;
+let episodeRequestSerial = 0;
+
+// Normaliza E01/E1 para o mesmo código interno. Isto também permite,
+// no futuro, E1000, E2000, etc., sem alterar a lógica.
+function normalizeEpisodeCode(code){
+	if (!code) return null;
+	const m = String(code).match(/^E(\d+)$/i);
+	if (!m) return null;
+	return 'E' + String(parseInt(m[1], 10));
+}
+
+// Extrai o código do episódio do metadata da obra, por exemplo:
+// "ID #106 E102 - The Great Experiment..."
+function extractEpisodeCodeFromText(text){
+	if (!text) return null;
+	const m = String(text).match(/\bE(\d+)\b/i);
+	return normalizeEpisodeCode(m ? ('E' + m[1]) : null);
+}
+
+// Lê o índice actual da galeria, sem depender do URL da página.
+function getCurrentEpisodeCode(){
+	if (typeof config_file_content === 'undefined' || !config_file_content) return null;
+	if (typeof current_gallery === 'undefined') return null;
+
+	const gallery = config_file_content[current_gallery];
+	if (!gallery) return null;
+
+	const dict_items = Object.keys(gallery).filter(
+		key => gallery[key]["resource_type"] == "image"
+	);
+	if (!dict_items.length) return null;
+
+	let idx = (typeof manual_navigation_idx === 'number') ? manual_navigation_idx : 0;
+	if (idx < 0) idx = dict_items.length - 1;
+	if (idx >= dict_items.length) idx = 0;
+
+	const metadata = gallery[dict_items[idx]]["metadata"];
+	return extractEpisodeCodeFromText(metadata);
+}
+
+// Obtém uma vez a lista pública da pasta do GitHub e cria um mapa
+// código -> URL directa do MP3. As 545+ ligações não são escritas manualmente.
+function loadEpisodeIndex(){
+	if (episodeIndex) return Promise.resolve(episodeIndex);
+	if (episodeIndexPromise) return episodeIndexPromise;
+
+	episodeIndexPromise = fetch(EPISODES_GITHUB_API, {
+		headers: { 'Accept': 'application/vnd.github+json' }
+	})
+	.then(response => {
+		if (!response.ok) throw new Error('GitHub API: HTTP ' + response.status);
+		return response.json();
+	})
+	.then(entries => {
+		const map = {};
+		if (Array.isArray(entries)){
+			entries.forEach(entry => {
+				if (!entry || entry.type !== 'file' || !entry.name) return;
+				if (!/\.mp3$/i.test(entry.name)) return;
+
+				const m = entry.name.match(/^(E\d+)/i);
+				if (!m) return;
+
+				const code = normalizeEpisodeCode(m[1]);
+				if (code && !map[code] && entry.download_url){
+					map[code] = entry.download_url;
+				}
+			});
+		}
+		episodeIndex = map;
+		return map;
+	})
+	.catch(error => {
+		console.warn('Não foi possível carregar o índice dos episódios:', error);
+		episodeIndexPromise = null;
+		throw error;
+	});
+
+	return episodeIndexPromise;
+}
+
+function updateEpisodeButton(state){
+	const btn = document.getElementById('episodeToggle');
+	if (!btn) return;
+
+	if (state === 'playing'){
+		btn.textContent = '⏸';
+		btn.title = 'Pausar episódio';
+		btn.setAttribute('aria-label', 'Pausar episódio');
+		btn.disabled = false;
+	} else if (state === 'loading'){
+		btn.textContent = '▶';
+		btn.title = 'A carregar episódio';
+		btn.setAttribute('aria-label', 'A carregar episódio');
+		btn.disabled = true;
+	} else if (state === 'unavailable'){
+		btn.textContent = '▶';
+		btn.title = 'Episódio não encontrado';
+		btn.setAttribute('aria-label', 'Episódio não encontrado');
+		btn.disabled = true;
+	} else {
+		btn.textContent = '▶';
+		btn.title = 'Ouvir episódio';
+		btn.setAttribute('aria-label', 'Ouvir episódio');
+		btn.disabled = false;
+	}
+}
+
+function stopEpisodeAudio(){
+	const audio = document.getElementById('episodeAudio');
+	if (!audio) return;
+	audio.pause();
+	audio.currentTime = 0;
+	episodeCurrentCode = null;
+	episodeCurrentUrl = null;
+	updateEpisodeButton('stopped');
+}
+
+function pauseMuseumMusicForEpisode(){
+	const music = document.getElementById('museumMusic');
+	if (!music) return;
+	music.pause();
+}
+
+// Reproduz automaticamente o episódio correspondente à obra actual.
+// A música ambiente é parada antes de iniciar o episódio.
+function playEpisodeForCurrentArtwork(){
+	const code = getCurrentEpisodeCode();
+	const requestId = ++episodeRequestSerial;
+	const audio = document.getElementById('episodeAudio');
+	if (!audio) return;
+
+	// Cada mudança de obra invalida imediatamente o pedido anterior.
+	audio.pause();
+	audio.currentTime = 0;
+	episodeCurrentCode = null;
+	episodeCurrentUrl = null;
+
+	if (!code){
+		updateEpisodeButton('unavailable');
+		return;
+	}
+
+	pauseMuseumMusicForEpisode();
+	updateEpisodeButton('loading');
+
+	loadEpisodeIndex()
+		.then(map => {
+			if (requestId !== episodeRequestSerial) return;
+
+			const url = map[code];
+			if (!url){
+				console.warn('Áudio não encontrado para', code);
+				updateEpisodeButton('unavailable');
+				return;
+			}
+
+			episodeCurrentCode = code;
+			episodeCurrentUrl = url;
+
+			if (audio.src !== url) audio.src = url;
+			audio.load();
+
+			const playPromise = audio.play();
+			if (playPromise && playPromise.catch){
+				playPromise.catch(error => {
+					// Se o navegador bloquear autoplay, o botão ▶ continua disponível.
+					console.warn('Reprodução automática do episódio bloqueada:', error);
+					updateEpisodeButton('stopped');
+				});
+			}
+		})
+		.catch(() => {
+			if (requestId === episodeRequestSerial) updateEpisodeButton('unavailable');
+		});
+}
+
+function toggleEpisodeAudio(){
+	const audio = document.getElementById('episodeAudio');
+	if (!audio) return;
+
+	if (audio.paused){
+		// Se ainda não houver um episódio carregado, resolve a obra actual.
+		if (!episodeCurrentUrl){
+			playEpisodeForCurrentArtwork();
+			return;
+		}
+
+		pauseMuseumMusicForEpisode();
+		const p = audio.play();
+		if (p && p.catch){
+			p.catch(() => updateEpisodeButton('stopped'));
+		}
+	} else {
+		audio.pause();
+	}
+}
+
+// O estado do botão acompanha sempre o elemento de áudio.
+function initEpisodeAudio(){
+	const audio = document.getElementById('episodeAudio');
+	if (!audio) return;
+
+	audio.onplay = function(){
+		pauseMuseumMusicForEpisode();
+		updateEpisodeButton('playing');
+	};
+	audio.onpause = function(){
+		if (!audio.ended) updateEpisodeButton('stopped');
+	};
+	audio.onended = function(){
+		updateEpisodeButton('stopped');
+	};
+	updateEpisodeButton('stopped');
+
+	// Pré-carrega o índice em segundo plano; não inicia qualquer episódio aqui.
+	loadEpisodeIndex().catch(() => {});
+}
 
 // ==========================================================================
 //  Cinematic visit: self-running, eased camera tour of the current gallery
@@ -277,6 +512,14 @@ function hideInfoBox() {
     // Stop any running cinematic tour before the room swaps, so artwork indices
     // from the old gallery can't leak into the new one.
     if (typeof stopCinematicVisit === 'function') stopCinematicVisit();
+
+    // O episódio pertence à obra/galeria anterior; não deve continuar a tocar
+    // quando o visitante sai da sala.
+    if (typeof stopEpisodeAudio === 'function') {
+        episodeRequestSerial++;
+        stopEpisodeAudio();
+    }
+
     const el = document.getElementById("artwork-info");
     if (el) el.innerText = "";
 }
@@ -312,6 +555,7 @@ function loadOverlay() {
         const helpPopup = document.getElementById('help-popup');
         if (helpPopup) helpPopup.style.display = 'none';
         hideInfoBox();
+        initEpisodeAudio();
     };
 
     const fetchText = (url) => fetch(url).then(r => {
