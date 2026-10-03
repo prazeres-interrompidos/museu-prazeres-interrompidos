@@ -208,7 +208,7 @@ function setCinematicButtonState(active){
 	// Icon-only button: toggle the active glow and update the tooltip/label, but
 	// never touch textContent (that would wipe the inline SVG).
 	btn.classList.toggle('active', active);
-	btn.title = active ? 'Stop cinematic visit' : 'Cinematic visit';
+	btn.title = active ? 'Parar visita cinematográfica' : 'Visita cinematográfica';
 	btn.setAttribute('aria-label', btn.title);
 }
 
