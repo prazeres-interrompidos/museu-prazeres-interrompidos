@@ -83,12 +83,11 @@ function manual_move_forward(){
 
 // ==========================================================================
 //  Episódios do podcast: ligação automática E### -> MP3
-// ========================================================================== 
+// ===========================================================================
 
 const EPISODES_GITHUB_REPO =
 	'https://api.github.com/repos/prazeres-interrompidos/museu-prazeres-interrompidos';
 const EPISODES_FOLDER = 'EPISÓDIOS PARA O MUSEU';
-const EPISODES_CDN_REPO = 'prazeres-interrompidos/museu-prazeres-interrompidos';
 
 let episodeIndex = null;
 let episodeIndexPromise = null;
@@ -103,35 +102,39 @@ function normalizeEpisodeCode(code){
 	return 'E' + String(parseInt(m[1], 10));
 }
 
-function extractEpisodeCodeFromText(text){
-	if (!text) return null;
-	const m = String(text).match(/(?:^|[^A-Za-z0-9])E(\d+)(?!\d)/i);
-	return normalizeEpisodeCode(m ? ('E' + m[1]) : null);
+function decodeSafe(value){
+	try { return decodeURIComponent(value); } catch (_) { return value; }
 }
 
-// O código principal vem do NOME/RESOURCE da imagem. A metadata é apenas fallback.
-function getCurrentEpisodeCode(){
+// O código é retirado do nome da imagem, nunca do título da obra.
+// Assim E01.jpg -> E01, E544.jpg -> E544, independentemente do restante nome.
+function extractEpisodeCodeFromResource(resource){
+	if (!resource) return null;
+	let value = decodeSafe(String(resource).split(/[?#]/)[0].replace(/\\/g, '/'));
+	const fileName = value.substring(value.lastIndexOf('/') + 1);
+	const m = fileName.match(/^(E\d+)(?!\d)/i);
+	return normalizeEpisodeCode(m ? m[1] : null);
+}
+
+function getCurrentArtworkEntry(){
 	if (typeof config_file_content === 'undefined' || !config_file_content) return null;
 	if (typeof current_gallery === 'undefined') return null;
 	const gallery = config_file_content[current_gallery];
 	if (!gallery) return null;
-
 	const dict_items = Object.keys(gallery).filter(
 		key => gallery[key]["resource_type"] == "image"
 	);
 	if (!dict_items.length) return null;
-
 	let idx = (typeof manual_navigation_idx === 'number') ? manual_navigation_idx : 0;
 	if (idx < 0) idx = dict_items.length - 1;
 	if (idx >= dict_items.length) idx = 0;
+	return gallery[dict_items[idx]];
+}
 
-	const item = gallery[dict_items[idx]] || {};
-	const resource = item.resource || '';
-	const resourceName = String(resource).split(/[\\/]/).pop();
-	let code = extractEpisodeCodeFromText(resourceName);
-	if (code) return code;
-
-	return extractEpisodeCodeFromText(item.metadata || '');
+function getCurrentEpisodeCode(){
+	const artwork = getCurrentArtworkEntry();
+	if (!artwork) return null;
+	return extractEpisodeCodeFromResource(artwork["resource"]);
 }
 
 function rawEpisodeUrl(branch, filePath){
@@ -140,74 +143,55 @@ function rawEpisodeUrl(branch, filePath){
 		filePath.split('/').map(part => encodeURIComponent(part)).join('/');
 }
 
-function addEpisodeEntries(entries, map, branch){
-	if (!Array.isArray(entries)) return map;
-	const folderPrefix = EPISODES_FOLDER + '/';
-	entries.forEach(entry => {
-		if (!entry) return;
-		const filePath = entry.path || entry.name || '';
-		const fileName = String(filePath).split('/').pop();
-		if (!fileName || !/\.mp3$/i.test(fileName)) return;
-		if (!filePath.startsWith(folderPrefix)) return;
-		const m = fileName.match(/^(E\d+)(?!\d)/i);
-		if (!m) return;
-		const code = normalizeEpisodeCode(m[1]);
-		const url = entry.download_url || rawEpisodeUrl(branch, filePath);
-		if (code && url && !map[code]) map[code] = url;
-	});
-	return map;
-}
-
-// Índice principal: GitHub Contents. Fallback: jsDelivr, evitando depender de
-// uma única API e permitindo que os 544+ episódios sejam descobertos automaticamente.
+// Cria o índice através da árvore Git completa.
+// Isto evita a limitação de paginação da API Contents (máximo de 100 itens por página)
+// e garante que E544, e futuramente E1000+, também são encontrados.
 function loadEpisodeIndex(){
 	if (episodeIndex) return Promise.resolve(episodeIndex);
 	if (episodeIndexPromise) return episodeIndexPromise;
 
-	const contentsUrl = (branch) =>
-		EPISODES_GITHUB_REPO + '/contents/' +
-		EPISODES_FOLDER.split('/').map(part => encodeURIComponent(part)).join('/') +
-		'?ref=' + encodeURIComponent(branch) + '&per_page=1000';
-
-	const fetchContents = (branch) => fetch(contentsUrl(branch), {
-		headers: { 'Accept': 'application/vnd.github+json' }
-	}).then(r => {
-		if (!r.ok) throw new Error('GitHub Contents HTTP ' + r.status);
-		return r.json();
-	}).then(entries => addEpisodeEntries(entries, {}, branch));
-
-	const fetchJsDelivr = () => fetch(
-		'https://data.jsdelivr.com/v1/package/gh/' + EPISODES_CDN_REPO + '@main/flat'
-	).then(r => {
-		if (!r.ok) throw new Error('jsDelivr HTTP ' + r.status);
-		return r.json();
-	}).then(data => {
+	function fetchContentsAllPages(branch){
+		const base = EPISODES_GITHUB_REPO + '/contents/' +
+			EPISODES_FOLDER.split('/').map(part => encodeURIComponent(part)).join('/');
 		const map = {};
-		const prefix = EPISODES_FOLDER + '/';
-		(data.files || []).forEach(entry => {
-			const filePath = entry.name || '';
-			if (!filePath.startsWith(prefix) || !/\.mp3$/i.test(filePath)) return;
-			const fileName = filePath.split('/').pop();
-			const m = fileName.match(/^(E\d+)(?!\d)/i);
-			if (!m) return;
-			const code = normalizeEpisodeCode(m[1]);
-			if (!code || map[code]) return;
-			map[code] = 'https://cdn.jsdelivr.net/gh/' + EPISODES_CDN_REPO + '@main/' +
-				filePath.split('/').map(part => encodeURIComponent(part)).join('/');
-		});
-		return map;
-	});
 
-	episodeIndexPromise = fetchContents('main')
+		function fetchPage(page){
+			const url = base + '?ref=' + encodeURIComponent(branch) + '&per_page=100&page=' + page;
+			return fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } })
+				.then(response => {
+					if (!response.ok) throw new Error('GitHub Contents HTTP ' + response.status);
+					return response.json();
+				})
+				.then(entries => {
+					if (!Array.isArray(entries)) throw new Error('Resposta inválida do GitHub');
+					entries.forEach(entry => {
+						if (!entry || entry.type !== 'file') return;
+						const fileName = String(entry.name || '');
+						if (!/\.mp3$/i.test(fileName)) return;
+						const m = fileName.match(/^(E\d+)(?!\d)/i);
+						if (!m) return;
+						const code = normalizeEpisodeCode(m[1]);
+						if (!code) return;
+						const filePath = entry.path || (EPISODES_FOLDER + '/' + fileName);
+						if (!map[code]) map[code] = entry.download_url || rawEpisodeUrl(branch, filePath);
+					});
+
+					// GitHub Contents accepts a maximum of 100 per page. Continue until
+					// the final page, so E544 and future E1000+ are never missed.
+					if (entries.length === 100) return fetchPage(page + 1);
+					return map;
+				});
+		}
+
+		return fetchPage(1).then(result => {
+			if (!Object.keys(result).length) throw new Error('Nenhum MP3 E### encontrado');
+			return result;
+		});
+	}
+
+	episodeIndexPromise = fetchContentsAllPages('main')
+		.catch(() => fetchContentsAllPages('master'))
 		.then(map => {
-			if (Object.keys(map).length) return map;
-			return fetchJsDelivr();
-		})
-		.catch(() => fetchJsDelivr())
-		.then(map => {
-			if (!map || !Object.keys(map).length) {
-				throw new Error('Nenhum MP3 E### encontrado na pasta dos episódios');
-			}
 			episodeIndex = map;
 			return map;
 		})
@@ -223,83 +207,130 @@ function loadEpisodeIndex(){
 function updateEpisodeButton(state){
 	const btn = document.getElementById('episodeToggle');
 	if (!btn) return;
+
 	if (state === 'playing'){
-		btn.textContent = '⏸'; btn.title = 'Pausar episódio'; btn.setAttribute('aria-label','Pausar episódio'); btn.disabled = false;
+		btn.textContent = '⏸';
+		btn.title = 'Pausar episódio';
+		btn.setAttribute('aria-label', 'Pausar episódio');
+		btn.disabled = false;
 	} else if (state === 'loading'){
-		btn.textContent = '▶'; btn.title = 'A carregar episódio'; btn.setAttribute('aria-label','A carregar episódio'); btn.disabled = false;
+		btn.textContent = '▶';
+		btn.title = 'A preparar episódio';
+		btn.setAttribute('aria-label', 'A preparar episódio');
+		btn.disabled = true;
 	} else if (state === 'unavailable'){
-		btn.textContent = '▶'; btn.title = 'Episódio não encontrado'; btn.setAttribute('aria-label','Episódio não encontrado'); btn.disabled = false;
+		btn.textContent = '▶';
+		btn.title = 'Episódio não encontrado';
+		btn.setAttribute('aria-label', 'Episódio não encontrado');
+		btn.disabled = true;
 	} else {
-		btn.textContent = '▶'; btn.title = 'Ouvir episódio'; btn.setAttribute('aria-label','Ouvir episódio'); btn.disabled = false;
+		btn.textContent = '▶';
+		btn.title = 'Ouvir episódio';
+		btn.setAttribute('aria-label', 'Ouvir episódio');
+		btn.disabled = false;
 	}
 }
 
 function stopEpisodeAudio(){
 	const audio = document.getElementById('episodeAudio');
 	if (!audio) return;
-	audio.pause(); audio.removeAttribute('src'); audio.load();
-	episodeCurrentCode = null; episodeCurrentUrl = null;
+	audio.pause();
+	audio.currentTime = 0;
+	episodeCurrentCode = null;
+	episodeCurrentUrl = null;
 	updateEpisodeButton('stopped');
 }
 
 function pauseMuseumMusicForEpisode(){
 	const music = document.getElementById('museumMusic');
-	if (music) music.pause();
+	if (!music) return;
+	music.pause();
 }
 
+// Prepara o episódio da obra actual, mas não chama play().
+// O play é feito pelo clique do botão, garantindo que o navegador o reconhece
+// como uma acção do visitante.
 function prepareEpisodeForCurrentArtwork(){
 	const code = getCurrentEpisodeCode();
-	const audio = document.getElementById('episodeAudio');
-	if (!audio || !code) { updateEpisodeButton('unavailable'); return Promise.reject(new Error('Código E### não encontrado')); }
 	const requestId = ++episodeRequestSerial;
+	const audio = document.getElementById('episodeAudio');
+	if (!audio) return Promise.reject(new Error('episodeAudio inexistente'));
+
+	audio.pause();
+	audio.currentTime = 0;
+	episodeCurrentCode = null;
+	episodeCurrentUrl = null;
+
+	if (!code){
+		updateEpisodeButton('unavailable');
+		return Promise.reject(new Error('Código E### não encontrado na imagem'));
+	}
+
 	pauseMuseumMusicForEpisode();
 	updateEpisodeButton('loading');
+
 	return loadEpisodeIndex().then(map => {
-		if (requestId !== episodeRequestSerial) return null;
+		if (requestId !== episodeRequestSerial) throw new Error('pedido ultrapassado');
 		const url = map[code];
 		if (!url) throw new Error('Áudio não encontrado para ' + code);
-		episodeCurrentCode = code; episodeCurrentUrl = url;
-		audio.pause(); audio.currentTime = 0;
+
+		episodeCurrentCode = code;
+		episodeCurrentUrl = url;
 		if (audio.src !== url) audio.src = url;
 		audio.load();
-		return { code, url, audio };
+		updateEpisodeButton('stopped');
+		return { code, url };
+	}).catch(error => {
+		if (requestId === episodeRequestSerial) updateEpisodeButton('unavailable');
+		throw error;
 	});
 }
 
 function playEpisodeForCurrentArtwork(){
-	return prepareEpisodeForCurrentArtwork().then(result => {
-		if (!result) return;
-		const p = result.audio.play();
-		if (p && p.catch) p.catch(() => updateEpisodeButton('stopped'));
-	}).catch(error => {
-		console.warn('Não foi possível preparar o episódio:', error);
-		updateEpisodeButton('stopped');
-	});
+	return prepareEpisodeForCurrentArtwork();
 }
 
 function toggleEpisodeAudio(){
 	const audio = document.getElementById('episodeAudio');
 	if (!audio) return;
-	if (!audio.paused){ audio.pause(); return; }
+
+	if (!audio.paused){
+		audio.pause();
+		return;
+	}
+
 	pauseMuseumMusicForEpisode();
+
+	// O índice é pré-carregado. Quando o botão é premido, a URL já deve estar
+	// disponível e play() acontece directamente dentro do gesto do utilizador.
 	if (episodeCurrentUrl){
 		const p = audio.play();
 		if (p && p.catch) p.catch(() => updateEpisodeButton('stopped'));
 		return;
 	}
-	// O clique no botão inicia a preparação e, assim que o URL é conhecido,
-	// tenta imediatamente reproduzir o episódio correspondente à obra.
-	playEpisodeForCurrentArtwork();
+
+	// Se ainda estiver a preparar, não iniciamos play() dentro do .then().
+	// O próximo clique, já com a URL preparada, iniciará o áudio.
+	prepareEpisodeForCurrentArtwork().catch(() => {});
 }
 
 function initEpisodeAudio(){
 	const audio = document.getElementById('episodeAudio');
 	if (!audio) return;
-	audio.onplay = function(){ pauseMuseumMusicForEpisode(); updateEpisodeButton('playing'); };
-	audio.onpause = function(){ if (!audio.ended) updateEpisodeButton('stopped'); };
-	audio.onended = function(){ updateEpisodeButton('stopped'); };
+
+	audio.onplay = function(){
+		pauseMuseumMusicForEpisode();
+		updateEpisodeButton('playing');
+	};
+	audio.onpause = function(){
+		if (!audio.ended) updateEpisodeButton('stopped');
+	};
+	audio.onended = function(){
+		updateEpisodeButton('stopped');
+	};
 	updateEpisodeButton('stopped');
-	// Pré-carrega o índice sem iniciar qualquer áudio.
+
+	// Pré-carrega o índice dos 545+ episódios em segundo plano.
 	loadEpisodeIndex().catch(() => {});
 }
 
