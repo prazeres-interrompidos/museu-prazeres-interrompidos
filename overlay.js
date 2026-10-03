@@ -83,11 +83,12 @@ function manual_move_forward(){
 
 // ==========================================================================
 //  Episódios do podcast: ligação automática E### -> MP3
-// ==========================================================================
+// ========================================================================== 
 
 const EPISODES_GITHUB_REPO =
 	'https://api.github.com/repos/prazeres-interrompidos/museu-prazeres-interrompidos';
 const EPISODES_FOLDER = 'EPISÓDIOS PARA O MUSEU';
+const EPISODES_CDN_REPO = 'prazeres-interrompidos/museu-prazeres-interrompidos';
 
 let episodeIndex = null;
 let episodeIndexPromise = null;
@@ -95,9 +96,6 @@ let episodeCurrentCode = null;
 let episodeCurrentUrl = null;
 let episodeRequestSerial = 0;
 
-// O código do episódio é sempre E + número. Mantemos a representação numérica
-// normalizada apenas para comparar códigos (E01 = E1), sem nunca depender do
-// restante do nome do ficheiro.
 function normalizeEpisodeCode(code){
 	if (!code) return null;
 	const m = String(code).match(/^E(\d+)$/i);
@@ -105,22 +103,21 @@ function normalizeEpisodeCode(code){
 	return 'E' + String(parseInt(m[1], 10));
 }
 
-// Extrai apenas o primeiro código E### do metadata da obra.
 function extractEpisodeCodeFromText(text){
 	if (!text) return null;
-	const m = String(text).match(/\bE(\d+)\b/i);
+	const m = String(text).match(/(?:^|[^A-Za-z0-9])E(\d+)(?!\d)/i);
 	return normalizeEpisodeCode(m ? ('E' + m[1]) : null);
 }
 
+// O código principal vem do NOME/RESOURCE da imagem. A metadata é apenas fallback.
 function getCurrentEpisodeCode(){
 	if (typeof config_file_content === 'undefined' || !config_file_content) return null;
 	if (typeof current_gallery === 'undefined') return null;
-
 	const gallery = config_file_content[current_gallery];
 	if (!gallery) return null;
 
 	const dict_items = Object.keys(gallery).filter(
-		key => gallery[key] && gallery[key]["resource_type"] == "image"
+		key => gallery[key]["resource_type"] == "image"
 	);
 	if (!dict_items.length) return null;
 
@@ -128,94 +125,89 @@ function getCurrentEpisodeCode(){
 	if (idx < 0) idx = dict_items.length - 1;
 	if (idx >= dict_items.length) idx = 0;
 
-	const itemKey = dict_items[idx];
-	const item = gallery[itemKey] || {};
+	const item = gallery[dict_items[idx]] || {};
+	const resource = item.resource || '';
+	const resourceName = String(resource).split(/[\\/]/).pop();
+	let code = extractEpisodeCodeFromText(resourceName);
+	if (code) return code;
 
-	// Regra principal: o código vem do NOME/URL DA IMAGEM.
-	// Ex.: E544 (voz de ...) - ...jpg -> E544.
-	// Isto permite duas imagens E06 apontarem para o mesmo áudio E06.
-	const resourceText = item.resource || itemKey || '';
-	const decodedResource = (() => {
-		try { return decodeURIComponent(String(resourceText)); }
-		catch (_) { return String(resourceText); }
-	})();
-	const fileName = decodedResource.split(/[\\/]/).pop().split('?')[0].split('#')[0];
-	const fromImage = extractEpisodeCodeFromText(fileName);
-	if (fromImage) return fromImage;
-
-	// Fallbacks apenas para compatibilidade com obras antigas.
-	const fromKey = extractEpisodeCodeFromText(itemKey);
-	if (fromKey) return fromKey;
-	return extractEpisodeCodeFromText(item.metadata);
+	return extractEpisodeCodeFromText(item.metadata || '');
 }
 
-// Constrói a URL raw para um ficheiro do próprio repositório.
 function rawEpisodeUrl(branch, filePath){
 	return 'https://raw.githubusercontent.com/prazeres-interrompidos/museu-prazeres-interrompidos/' +
 		encodeURIComponent(branch) + '/' +
 		filePath.split('/').map(part => encodeURIComponent(part)).join('/');
 }
 
-// Cria o índice E### -> MP3.
-// A pasta contém mais de 30 ficheiros, por isso a API Contents tem de ser
-// consultada com per_page=1000. Não dependemos da posição do ficheiro nem do
-// seu nome completo: apenas do código E### no início do nome.
+function addEpisodeEntries(entries, map, branch){
+	if (!Array.isArray(entries)) return map;
+	const folderPrefix = EPISODES_FOLDER + '/';
+	entries.forEach(entry => {
+		if (!entry) return;
+		const filePath = entry.path || entry.name || '';
+		const fileName = String(filePath).split('/').pop();
+		if (!fileName || !/\.mp3$/i.test(fileName)) return;
+		if (!filePath.startsWith(folderPrefix)) return;
+		const m = fileName.match(/^(E\d+)(?!\d)/i);
+		if (!m) return;
+		const code = normalizeEpisodeCode(m[1]);
+		const url = entry.download_url || rawEpisodeUrl(branch, filePath);
+		if (code && url && !map[code]) map[code] = url;
+	});
+	return map;
+}
+
+// Índice principal: GitHub Contents. Fallback: jsDelivr, evitando depender de
+// uma única API e permitindo que os 544+ episódios sejam descobertos automaticamente.
 function loadEpisodeIndex(){
 	if (episodeIndex) return Promise.resolve(episodeIndex);
 	if (episodeIndexPromise) return episodeIndexPromise;
 
-	function buildMap(entries, branch){
+	const contentsUrl = (branch) =>
+		EPISODES_GITHUB_REPO + '/contents/' +
+		EPISODES_FOLDER.split('/').map(part => encodeURIComponent(part)).join('/') +
+		'?ref=' + encodeURIComponent(branch) + '&per_page=1000';
+
+	const fetchContents = (branch) => fetch(contentsUrl(branch), {
+		headers: { 'Accept': 'application/vnd.github+json' }
+	}).then(r => {
+		if (!r.ok) throw new Error('GitHub Contents HTTP ' + r.status);
+		return r.json();
+	}).then(entries => addEpisodeEntries(entries, {}, branch));
+
+	const fetchJsDelivr = () => fetch(
+		'https://data.jsdelivr.com/v1/package/gh/' + EPISODES_CDN_REPO + '@main/flat'
+	).then(r => {
+		if (!r.ok) throw new Error('jsDelivr HTTP ' + r.status);
+		return r.json();
+	}).then(data => {
 		const map = {};
-		if (!Array.isArray(entries)) return map;
-
-		entries.forEach(entry => {
-			if (!entry || entry.type !== 'file') return;
-			const fileName = String(entry.name || '');
-			if (!/\.mp3$/i.test(fileName)) return;
-
-			// O código tem de estar no início e terminar antes de outro algarismo.
-			// Assim E01 não coincide com E010 e E10 não coincide com E100.
-			const match = fileName.match(/^(E\d+)(?!\d)/i);
-			if (!match) return;
-
-			const code = normalizeEpisodeCode(match[1]);
-			if (!code) return;
-
-			const filePath = entry.path || (EPISODES_FOLDER + '/' + fileName);
-			if (!map[code]) {
-				map[code] = entry.download_url || rawEpisodeUrl(branch, filePath);
-			}
+		const prefix = EPISODES_FOLDER + '/';
+		(data.files || []).forEach(entry => {
+			const filePath = entry.name || '';
+			if (!filePath.startsWith(prefix) || !/\.mp3$/i.test(filePath)) return;
+			const fileName = filePath.split('/').pop();
+			const m = fileName.match(/^(E\d+)(?!\d)/i);
+			if (!m) return;
+			const code = normalizeEpisodeCode(m[1]);
+			if (!code || map[code]) return;
+			map[code] = 'https://cdn.jsdelivr.net/gh/' + EPISODES_CDN_REPO + '@main/' +
+				filePath.split('/').map(part => encodeURIComponent(part)).join('/');
 		});
-
 		return map;
-	}
+	});
 
-	function fetchContents(branch){
-		const url = EPISODES_GITHUB_REPO + '/contents/' +
-			EPISODES_FOLDER.split('/').map(part => encodeURIComponent(part)).join('/') +
-			'?ref=' + encodeURIComponent(branch) + '&per_page=1000';
-
-		return fetch(url, {
-			headers: { 'Accept': 'application/vnd.github+json' }
+	episodeIndexPromise = fetchContents('main')
+		.then(map => {
+			if (Object.keys(map).length) return map;
+			return fetchJsDelivr();
 		})
-		.then(response => {
-			if (!response.ok) throw new Error('GitHub Contents HTTP ' + response.status);
-			return response.json();
-		})
-		.then(entries => {
-			const map = buildMap(entries, branch);
-			if (!Object.keys(map).length) {
+		.catch(() => fetchJsDelivr())
+		.then(map => {
+			if (!map || !Object.keys(map).length) {
 				throw new Error('Nenhum MP3 E### encontrado na pasta dos episódios');
 			}
-			return map;
-		});
-	}
-
-	// Primeiro tenta a branch actualmente usada pelo Museu. Se necessário,
-	// tenta master como compatibilidade com versões antigas do repositório.
-	episodeIndexPromise = fetchContents('main')
-		.catch(() => fetchContents('master'))
-		.then(map => {
 			episodeIndex = map;
 			return map;
 		})
@@ -231,140 +223,83 @@ function loadEpisodeIndex(){
 function updateEpisodeButton(state){
 	const btn = document.getElementById('episodeToggle');
 	if (!btn) return;
-
 	if (state === 'playing'){
-		btn.textContent = '⏸';
-		btn.title = 'Pausar episódio';
-		btn.setAttribute('aria-label', 'Pausar episódio');
-		btn.disabled = false;
+		btn.textContent = '⏸'; btn.title = 'Pausar episódio'; btn.setAttribute('aria-label','Pausar episódio'); btn.disabled = false;
 	} else if (state === 'loading'){
-		// O botão continua utilizável enquanto o índice dos episódios é carregado.
-		// Isto é importante no primeiro acesso, quando o carregamento pode ser assíncrono.
-		btn.textContent = '▶';
-		btn.title = 'A procurar episódio';
-		btn.setAttribute('aria-label', 'A procurar episódio');
-		btn.disabled = false;
+		btn.textContent = '▶'; btn.title = 'A carregar episódio'; btn.setAttribute('aria-label','A carregar episódio'); btn.disabled = false;
 	} else if (state === 'unavailable'){
-		btn.textContent = '▶';
-		btn.title = 'Episódio não encontrado';
-		btn.setAttribute('aria-label', 'Episódio não encontrado');
-		btn.disabled = true;
+		btn.textContent = '▶'; btn.title = 'Episódio não encontrado'; btn.setAttribute('aria-label','Episódio não encontrado'); btn.disabled = false;
 	} else {
-		btn.textContent = '▶';
-		btn.title = 'Ouvir episódio';
-		btn.setAttribute('aria-label', 'Ouvir episódio');
-		btn.disabled = false;
+		btn.textContent = '▶'; btn.title = 'Ouvir episódio'; btn.setAttribute('aria-label','Ouvir episódio'); btn.disabled = false;
 	}
 }
 
 function stopEpisodeAudio(){
 	const audio = document.getElementById('episodeAudio');
 	if (!audio) return;
-	audio.pause();
-	audio.currentTime = 0;
-	episodeCurrentCode = null;
-	episodeCurrentUrl = null;
+	audio.pause(); audio.removeAttribute('src'); audio.load();
+	episodeCurrentCode = null; episodeCurrentUrl = null;
 	updateEpisodeButton('stopped');
 }
 
 function pauseMuseumMusicForEpisode(){
 	const music = document.getElementById('museumMusic');
-	if (!music) return;
-	music.pause();
+	if (music) music.pause();
 }
 
-// Reproduz automaticamente o episódio correspondente à obra actual.
-// A música ambiente é parada antes de iniciar o episódio.
-function playEpisodeForCurrentArtwork(){
+function prepareEpisodeForCurrentArtwork(){
 	const code = getCurrentEpisodeCode();
-	const requestId = ++episodeRequestSerial;
 	const audio = document.getElementById('episodeAudio');
-	if (!audio) return;
-
-	// Cada mudança de obra invalida imediatamente o pedido anterior.
-	audio.pause();
-	audio.currentTime = 0;
-	episodeCurrentCode = null;
-	episodeCurrentUrl = null;
-
-	if (!code){
-		updateEpisodeButton('unavailable');
-		return;
-	}
-
+	if (!audio || !code) { updateEpisodeButton('unavailable'); return Promise.reject(new Error('Código E### não encontrado')); }
+	const requestId = ++episodeRequestSerial;
 	pauseMuseumMusicForEpisode();
 	updateEpisodeButton('loading');
+	return loadEpisodeIndex().then(map => {
+		if (requestId !== episodeRequestSerial) return null;
+		const url = map[code];
+		if (!url) throw new Error('Áudio não encontrado para ' + code);
+		episodeCurrentCode = code; episodeCurrentUrl = url;
+		audio.pause(); audio.currentTime = 0;
+		if (audio.src !== url) audio.src = url;
+		audio.load();
+		return { code, url, audio };
+	});
+}
 
-	loadEpisodeIndex()
-		.then(map => {
-			if (requestId !== episodeRequestSerial) return;
-
-			const url = map[code];
-			if (!url){
-				console.warn('Áudio não encontrado para', code);
-				updateEpisodeButton('unavailable');
-				return;
-			}
-
-			episodeCurrentCode = code;
-			episodeCurrentUrl = url;
-
-			if (audio.src !== url) audio.src = url;
-			audio.load();
-
-			const playPromise = audio.play();
-			if (playPromise && playPromise.catch){
-				playPromise.catch(error => {
-					// Se o navegador bloquear autoplay, o botão ▶ continua disponível.
-					console.warn('Reprodução automática do episódio bloqueada:', error);
-					updateEpisodeButton('stopped');
-				});
-			}
-		})
-		.catch(() => {
-			if (requestId === episodeRequestSerial) updateEpisodeButton('unavailable');
-		});
+function playEpisodeForCurrentArtwork(){
+	return prepareEpisodeForCurrentArtwork().then(result => {
+		if (!result) return;
+		const p = result.audio.play();
+		if (p && p.catch) p.catch(() => updateEpisodeButton('stopped'));
+	}).catch(error => {
+		console.warn('Não foi possível preparar o episódio:', error);
+		updateEpisodeButton('stopped');
+	});
 }
 
 function toggleEpisodeAudio(){
 	const audio = document.getElementById('episodeAudio');
 	if (!audio) return;
-
-	if (audio.paused){
-		// Se ainda não houver um episódio carregado, resolve a obra actual.
-		if (!episodeCurrentUrl){
-			playEpisodeForCurrentArtwork();
-			return;
-		}
-
-		pauseMuseumMusicForEpisode();
+	if (!audio.paused){ audio.pause(); return; }
+	pauseMuseumMusicForEpisode();
+	if (episodeCurrentUrl){
 		const p = audio.play();
-		if (p && p.catch){
-			p.catch(() => updateEpisodeButton('stopped'));
-		}
-	} else {
-		audio.pause();
+		if (p && p.catch) p.catch(() => updateEpisodeButton('stopped'));
+		return;
 	}
+	// O clique no botão inicia a preparação e, assim que o URL é conhecido,
+	// tenta imediatamente reproduzir o episódio correspondente à obra.
+	playEpisodeForCurrentArtwork();
 }
 
-// O estado do botão acompanha sempre o elemento de áudio.
 function initEpisodeAudio(){
 	const audio = document.getElementById('episodeAudio');
 	if (!audio) return;
-
-	audio.onplay = function(){
-		pauseMuseumMusicForEpisode();
-		updateEpisodeButton('playing');
-	};
-	audio.onpause = function(){
-		if (!audio.ended) updateEpisodeButton('stopped');
-	};
-	audio.onended = function(){
-		updateEpisodeButton('stopped');
-	};
+	audio.onplay = function(){ pauseMuseumMusicForEpisode(); updateEpisodeButton('playing'); };
+	audio.onpause = function(){ if (!audio.ended) updateEpisodeButton('stopped'); };
+	audio.onended = function(){ updateEpisodeButton('stopped'); };
 	updateEpisodeButton('stopped');
-
-	// Pré-carrega o índice em segundo plano; não inicia qualquer episódio aqui.
+	// Pré-carrega o índice sem iniciar qualquer áudio.
 	loadEpisodeIndex().catch(() => {});
 }
 
