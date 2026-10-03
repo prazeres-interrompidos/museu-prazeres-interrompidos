@@ -81,7 +81,122 @@ function manual_move_forward(){
 
 
 
-// ==========================================================================\n//  Episódios do podcast: ligação automática E### -> MP3\n// ==========================================================================\n\nconst EPISODES_GITHUB_REPO =\n\t'https://api.github.com/repos/prazeres-interrompidos/museu-prazeres-interrompidos';\nconst EPISODES_FOLDER = 'EPISÓDIOS PARA O MUSEU';\n\nlet episodeIndex = null;\nlet episodeIndexPromise = null;\nlet episodeCurrentCode = null;\nlet episodeCurrentUrl = null;\nlet episodeRequestSerial = 0;\n\n// Mantém o número do episódio como identificador lógico.\n// E01 corresponde ao episódio 1; E1000 continua a funcionar.\nfunction normalizeEpisodeCode(code){\n\tif (!code) return null;\n\tconst m = String(code).match(/^E(\d+)$/i);\n\tif (!m) return null;\n\treturn 'E' + String(parseInt(m[1], 10));\n}\n\n// Extrai o código E### do metadata da obra.\n// Ex.: "ID #106 E102 - The Great Experiment..."\nfunction extractEpisodeCodeFromText(text){\n\tif (!text) return null;\n\tconst m = String(text).match(/\bE(\d+)\b/i);\n\treturn normalizeEpisodeCode(m ? ('E' + m[1]) : null);\n}\n\nfunction getCurrentEpisodeCode(){\n\tconst pose = getArtworkPose(manual_navigation_idx);\n\tif (!pose) return null;\n\treturn extractEpisodeCodeFromText(pose.title);\n}\n\n// Constrói uma URL raw para um caminho do próprio repositório.\nfunction rawEpisodeUrl(branch, filePath){\n\treturn 'https://raw.githubusercontent.com/prazeres-interrompidos/museu-prazeres-interrompidos/' +\n\t\tencodeURIComponent(branch) + '/' +\n\t\tfilePath.split('/').map(part => encodeURIComponent(part)).join('/');\n}\n\n// Cria automaticamente o índice E### -> MP3.\n// A árvore Git é usada numa única chamada, evitando o limite padrão de 30\n// resultados da API Contents e evitando depender da ordem dos 545+ ficheiros.\nfunction loadEpisodeIndex(){\n\tif (episodeIndex) return Promise.resolve(episodeIndex);\n\tif (episodeIndexPromise) return episodeIndexPromise;\n\n\tconst folderPrefix = EPISODES_FOLDER + '/';\n\n\tfunction buildMap(entries, branch){\n\t\tconst map = {};\n\t\tif (!Array.isArray(entries)) return map;\n\n\t\tentries.forEach(entry => {\n\t\t\tif (!entry) return;\n\t\t\tconst filePath = String(entry.path || entry.name || '');\n\t\t\tif (!filePath.startsWith(folderPrefix)) return;\n\n\t\t\tconst fileName = filePath.substring(folderPrefix.length).split('/').pop();\n\t\t\tif (!fileName || !/\\.mp3$/i.test(fileName)) return;\n\t\t\tif (entry.type && entry.type !== 'blob' && entry.type !== 'file') return;\n\n\t\t\t// O código tem de estar no início do nome e não pode ser seguido\n\t\t\t// por outro algarismo: E01 não coincide com E010.\n\t\t\tconst m = fileName.match(/^(E\d+)(?!\d)/i);\n\t\t\tif (!m) return;\n\n\t\t\tconst code = normalizeEpisodeCode(m[1]);\n\t\t\tif (!code || map[code]) return;\n\n\t\t\t// A API Git Tree não fornece download_url; construímos a URL raw.\n\t\t\tmap[code] = entry.download_url || rawEpisodeUrl(branch, filePath);\n\t\t});\n\n\t\treturn map;\n\t}\n\n\tfunction fetchTree(branch){\n\t\tconst url = EPISODES_GITHUB_REPO + '/git/trees/' +\n\t\t\tencodeURIComponent(branch) + '?recursive=1';\n\n\t\treturn fetch(url, {\n\t\t\theaders: { 'Accept': 'application/vnd.github+json' }\n\t\t})\n\t\t.then(response => {\n\t\t\tif (!response.ok) throw new Error('Git tree HTTP ' + response.status);\n\t\t\treturn response.json();\n\t\t})\n\t\t.then(data => {\n\t\t\tif (data.truncated) throw new Error('Git tree truncada');\n\t\t\treturn buildMap(data.tree, branch);\n\t\t});\n\t}\n\n\tfunction fetchContents(branch){\n\t\tconst url = EPISODES_GITHUB_REPO + '/contents/' +\n\t\t\tEPISODES_FOLDER.split('/').map(part => encodeURIComponent(part)).join('/') +\n\t\t\t'?ref=' + encodeURIComponent(branch) + '&per_page=100';\n\n\t\treturn fetch(url, {\n\t\t\theaders: { 'Accept': 'application/vnd.github+json' }\n\t\t})\n\t\t.then(response => {\n\t\t\tif (!response.ok) throw new Error('Contents HTTP ' + response.status);\n\t\t\treturn response.json();\n\t\t})\n\t\t.then(entries => buildMap(entries, branch));\n\t}\n\n\tfunction tryBranch(branch){\n\t\treturn fetchTree(branch).then(map => {\n\t\t\tif (Object.keys(map).length) return map;\n\t\t\treturn fetchContents(branch);\n\t\t});\n\t}\n\n\tepisodeIndexPromise = tryBranch('main')\n\t\t.catch(() => tryBranch('master'))\n\t\t.then(map => {\n\t\t\tif (!Object.keys(map).length) {\n\t\t\t\tthrow new Error('Nenhum MP3 E### encontrado na pasta dos episódios');\n\t\t\t}\n\t\t\tepisodeIndex = map;\n\t\t\treturn map;\n\t\t})\n\t\t.catch(error => {\n\t\t\tconsole.warn('Não foi possível carregar o índice dos episódios:', error);\n\t\t\tepisodeIndexPromise = null;\n\t\t\tthrow error;\n\t\t});\n\n\treturn episodeIndexPromise;\n}\n
+// ==========================================================================
+//  Episódios do podcast: ligação automática E### -> MP3
+// ==========================================================================
+
+const EPISODES_GITHUB_REPO =
+	'https://api.github.com/repos/prazeres-interrompidos/museu-prazeres-interrompidos';
+const EPISODES_FOLDER = 'EPISÓDIOS PARA O MUSEU';
+
+let episodeIndex = null;
+let episodeIndexPromise = null;
+let episodeCurrentCode = null;
+let episodeCurrentUrl = null;
+let episodeRequestSerial = 0;
+
+// O código do episódio é sempre E + número. Mantemos a representação numérica
+// normalizada apenas para comparar códigos (E01 = E1), sem nunca depender do
+// restante do nome do ficheiro.
+function normalizeEpisodeCode(code){
+	if (!code) return null;
+	const m = String(code).match(/^E(\d+)$/i);
+	if (!m) return null;
+	return 'E' + String(parseInt(m[1], 10));
+}
+
+// Extrai apenas o primeiro código E### do metadata da obra.
+function extractEpisodeCodeFromText(text){
+	if (!text) return null;
+	const m = String(text).match(/\bE(\d+)\b/i);
+	return normalizeEpisodeCode(m ? ('E' + m[1]) : null);
+}
+
+function getCurrentEpisodeCode(){
+	const pose = getArtworkPose(manual_navigation_idx);
+	if (!pose) return null;
+	return extractEpisodeCodeFromText(pose.title);
+}
+
+// Constrói a URL raw para um ficheiro do próprio repositório.
+function rawEpisodeUrl(branch, filePath){
+	return 'https://raw.githubusercontent.com/prazeres-interrompidos/museu-prazeres-interrompidos/' +
+		encodeURIComponent(branch) + '/' +
+		filePath.split('/').map(part => encodeURIComponent(part)).join('/');
+}
+
+// Cria o índice E### -> MP3.
+// A pasta contém mais de 30 ficheiros, por isso a API Contents tem de ser
+// consultada com per_page=1000. Não dependemos da posição do ficheiro nem do
+// seu nome completo: apenas do código E### no início do nome.
+function loadEpisodeIndex(){
+	if (episodeIndex) return Promise.resolve(episodeIndex);
+	if (episodeIndexPromise) return episodeIndexPromise;
+
+	function buildMap(entries, branch){
+		const map = {};
+		if (!Array.isArray(entries)) return map;
+
+		entries.forEach(entry => {
+			if (!entry || entry.type !== 'file') return;
+			const fileName = String(entry.name || '');
+			if (!/\.mp3$/i.test(fileName)) return;
+
+			// O código tem de estar no início e terminar antes de outro algarismo.
+			// Assim E01 não coincide com E010 e E10 não coincide com E100.
+			const match = fileName.match(/^(E\d+)(?!\d)/i);
+			if (!match) return;
+
+			const code = normalizeEpisodeCode(match[1]);
+			if (!code) return;
+
+			const filePath = entry.path || (EPISODES_FOLDER + '/' + fileName);
+			if (!map[code]) {
+				map[code] = entry.download_url || rawEpisodeUrl(branch, filePath);
+			}
+		});
+
+		return map;
+	}
+
+	function fetchContents(branch){
+		const url = EPISODES_GITHUB_REPO + '/contents/' +
+			EPISODES_FOLDER.split('/').map(part => encodeURIComponent(part)).join('/') +
+			'?ref=' + encodeURIComponent(branch) + '&per_page=1000';
+
+		return fetch(url, {
+			headers: { 'Accept': 'application/vnd.github+json' }
+		})
+		.then(response => {
+			if (!response.ok) throw new Error('GitHub Contents HTTP ' + response.status);
+			return response.json();
+		})
+		.then(entries => {
+			const map = buildMap(entries, branch);
+			if (!Object.keys(map).length) {
+				throw new Error('Nenhum MP3 E### encontrado na pasta dos episódios');
+			}
+			return map;
+		});
+	}
+
+	// Primeiro tenta a branch actualmente usada pelo Museu. Se necessário,
+	// tenta master como compatibilidade com versões antigas do repositório.
+	episodeIndexPromise = fetchContents('main')
+		.catch(() => fetchContents('master'))
+		.then(map => {
+			episodeIndex = map;
+			return map;
+		})
+		.catch(error => {
+			console.warn('Não foi possível carregar o índice dos episódios:', error);
+			episodeIndexPromise = null;
+			throw error;
+		});
+
+	return episodeIndexPromise;
+}
+
 function updateEpisodeButton(state){
 	const btn = document.getElementById('episodeToggle');
 	if (!btn) return;
