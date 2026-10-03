@@ -8,9 +8,6 @@
         <div class="nav-buttons">
             <button class="nav-button" onclick="manual_move_backward()">&#x25C0;</button>
             <button class="nav-button" onclick="manual_move_forward()">&#x25B6;</button>
-            <button class="nav-button episode-button" id="episodeToggle" type="button"
-                    title="Ouvir episódio" aria-label="Ouvir episódio"
-                    onclick="toggleEpisodeAudio()">&#x25B6;</button>
             <button class="nav-button cinematic-button" type="button"
                     title="Visita cinematográfica" aria-label="Visita cinematográfica"
                     onclick="if(typeof CB_cinematic_visit==='function')CB_cinematic_visit()">
@@ -44,7 +41,6 @@
            onloadedmetadata="this.volume=0.35;this.play().then(function(){var b=document.getElementById('musicToggle');if(b){b.textContent='🔊 Ligar música';b.title='Desligar música';}}).catch(function(){})"
            onplay="var b=document.getElementById('musicToggle');if(b){b.textContent='🔊 Ligar música';b.title='Desligar música';}"
            onpause="var b=document.getElementById('musicToggle');if(b){b.textContent='🔇 Desligar música';b.title='Ligar música';}"></audio>
-    <audio id="episodeAudio" preload="none"></audio>
 </div>
 
 <div id="help-popup">
