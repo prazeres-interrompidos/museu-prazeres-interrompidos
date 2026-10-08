@@ -2,6 +2,19 @@
     <div class="overlay-section" id="artwork-section">
         <p>Obra</p>
         <p id="artwork-info"></p>
+        <div id="episode-player" style="display:none;margin-top:0.45rem;">
+            <button id="episode-play-button" type="button"
+                    style="border:1px solid rgba(255,255,255,.35);border-radius:18px;
+                           background:rgba(25,25,25,.88);color:#fff;padding:.42rem .72rem;
+                           font:600 .72rem system-ui,sans-serif;cursor:pointer;
+                           box-shadow:0 2px 8px rgba(0,0,0,.25);"
+                    title="Ouvir episódio" aria-label="Ouvir episódio">
+                ▶ Ouvir episódio
+            </button>
+            <span id="episode-audio-status"
+                  style="display:block;margin-top:.3rem;font-size:.62rem;color:#aaa;"></span>
+        </div>
+        <audio id="episodeAudio" preload="none" playsinline></audio>
     </div>
     <div class="overlay-section" id="navigation-section">
         <p>Navegação manual</p>

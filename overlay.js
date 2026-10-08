@@ -7,6 +7,176 @@ function CB_artwork_picked(index) {
 	};
 }
 
+// --------------------------------------------------------------------------
+// Episode audio linked to each museum artwork
+// The artwork key in building_v2.json is also the base name of the episode
+// audio file in "EPISÓDIOS PARA O MUSEU". This keeps the link automatic for
+// every existing and future episode without adding audio URLs to the manifest.
+// --------------------------------------------------------------------------
+var MUSEUM_EPISODE_AUDIO_FOLDER = 'EPISÓDIOS PARA O MUSEU';
+
+function episodeAudioUrl(filename) {
+	return MUSEUM_EPISODE_AUDIO_FOLDER + '/' + encodeURIComponent(filename);
+}
+
+function getArtworkEntry(idx) {
+	if (typeof config_file_content === 'undefined' || !config_file_content) return null;
+	if (typeof current_gallery === 'undefined') return null;
+
+	var gallery = config_file_content[current_gallery];
+	if (!gallery) return null;
+
+	var dict_items = Object.keys(gallery).filter(function(key) {
+		return gallery[key] && gallery[key]["resource_type"] === "image";
+	});
+	if (!dict_items.length) return null;
+
+	if (idx < 0) idx = dict_items.length - 1;
+	if (idx >= dict_items.length) idx = 0;
+
+	var key = dict_items[idx];
+	return {
+		key: key,
+		data: gallery[key],
+		index: idx
+	};
+}
+
+var episodeAudioState = {
+	key: null,
+	fallbackTried: false,
+	ambientWasPlaying: false
+};
+
+function setupEpisodePlayer() {
+	var audio = document.getElementById('episodeAudio');
+	var button = document.getElementById('episode-play-button');
+	if (!audio || !button || audio.dataset.ready === '1') return;
+	audio.dataset.ready = '1';
+
+	button.addEventListener('click', function() {
+		if (!audio.src) return;
+
+		if (audio.paused) {
+			var ambient = document.getElementById('museumMusic');
+			episodeAudioState.ambientWasPlaying = !!(ambient && !ambient.paused && !ambient.muted);
+			if (ambient && !ambient.paused) ambient.pause();
+
+			audio.play().then(function() {
+			button.textContent = '❚❚ Pausar episódio';
+			button.title = 'Pausar episódio';
+			button.setAttribute('aria-label', 'Pausar episódio');
+		}).catch(function() {
+			setEpisodeStatus('Não foi possível reproduzir o áudio.');
+		});
+		} else {
+			audio.pause();
+		}
+	});
+
+	audio.addEventListener('play', function() {
+		button.textContent = '❚❚ Pausar episódio';
+		button.title = 'Pausar episódio';
+		button.setAttribute('aria-label', 'Pausar episódio');
+	});
+
+	audio.addEventListener('pause', function() {
+		if (!audio.ended) {
+			button.textContent = '▶ Ouvir episódio';
+			button.title = 'Ouvir episódio';
+			button.setAttribute('aria-label', 'Ouvir episódio');
+		}
+	});
+
+	audio.addEventListener('ended', function() {
+		button.textContent = '▶ Ouvir episódio';
+		button.title = 'Ouvir episódio';
+		button.setAttribute('aria-label', 'Ouvir episódio');
+		var ambient = document.getElementById('museumMusic');
+		if (episodeAudioState.ambientWasPlaying && ambient) {
+			ambient.play().catch(function(){});
+		}
+		episodeAudioState.ambientWasPlaying = false;
+	});
+
+	audio.addEventListener('error', function() {
+		// If the full filename is not the audio filename used on the server,
+		// retry once using the episode number alone (e.g. E530.mp3).
+		var match = episodeAudioState.key && episodeAudioState.key.match(/^(E\d{1,4})\b/i);
+		if (match && !episodeAudioState.fallbackTried) {
+			episodeAudioState.fallbackTried = true;
+			setEpisodeStatus('A carregar o episódio…');
+			audio.src = episodeAudioUrl(match[1] + '.mp3');
+			audio.load();
+			return;
+		}
+		button.disabled = true;
+		button.style.opacity = '0.55';
+		setEpisodeStatus('Áudio não disponível.');
+	});
+}
+
+function setEpisodeStatus(text) {
+	var status = document.getElementById('episode-audio-status');
+	if (status) status.textContent = text || '';
+}
+
+function stopEpisodeAudio() {
+	var audio = document.getElementById('episodeAudio');
+	if (!audio) return;
+
+	var ambient = document.getElementById('museumMusic');
+	var resumeAmbient = episodeAudioState.ambientWasPlaying;
+
+	audio.pause();
+	audio.removeAttribute('src');
+	audio.load();
+
+	if (resumeAmbient && ambient) ambient.play().catch(function(){});
+	episodeAudioState.key = null;
+	episodeAudioState.fallbackTried = false;
+	episodeAudioState.ambientWasPlaying = false;
+
+	var button = document.getElementById('episode-play-button');
+	if (button) {
+		button.disabled = false;
+		button.style.opacity = '1';
+		button.textContent = '▶ Ouvir episódio';
+		button.title = 'Ouvir episódio';
+		button.setAttribute('aria-label', 'Ouvir episódio');
+	}
+	setEpisodeStatus('');
+}
+
+function loadEpisodeAudio(idx) {
+	setupEpisodePlayer();
+
+	var player = document.getElementById('episode-player');
+	var audio = document.getElementById('episodeAudio');
+	var button = document.getElementById('episode-play-button');
+	if (!player || !audio || !button) return;
+
+	var entry = getArtworkEntry(idx);
+	if (!entry) {
+		stopEpisodeAudio();
+		player.style.display = 'none';
+		return;
+	}
+
+	stopEpisodeAudio();
+
+	player.style.display = 'block';
+	episodeAudioState.key = entry.key;
+	episodeAudioState.fallbackTried = false;
+	setEpisodeStatus('Episódio ' + ((entry.key.match(/^(E\d{1,4})\b/i) || [entry.key])[1]));
+
+	// Primary link: exact artwork/episode name + .mp3.
+	// The key is encoded as one URL path component, so spaces, accents and
+	// punctuation in Portuguese titles are handled correctly.
+	audio.src = episodeAudioUrl(entry.key + '.mp3');
+	audio.load();
+}
+
 
 //rest of utility functions
 
@@ -63,7 +233,7 @@ function manual_move(){
 	camera.position = pose.position;
 	camera.setTarget(pose.target);
 
-	showInfoBox(pose.title);
+	showInfoBox(pose.title, pose.idx);
 }
 
 function manual_move_backward(){
@@ -174,7 +344,7 @@ function cinematicLeg(){
 		function(){
 			// onAnimationEnd — also fires on .stop(), so guard on active state
 			if (!cinematic_active) return;
-			showInfoBox(pose.title);
+			showInfoBox(pose.title, idx);
 			manual_navigation_idx = idx;   // ◀/▶ continue from here after the tour
 			cinematic_last_idx = idx;
 			if (cinematicArtworkCount() <= 1){
@@ -268,9 +438,18 @@ function CB_cinematic_visit(){
 }
 
 // show metadata or other info
-function showInfoBox(title) {
+function showInfoBox(title, artworkIdx) {
     const el = document.getElementById("artwork-info");
     if (el) el.innerText = title;
+
+    // Every artwork in the museum represents a podcast episode.
+    if (typeof artworkIdx === 'number') {
+        loadEpisodeAudio(artworkIdx);
+    } else {
+        stopEpisodeAudio();
+        var player = document.getElementById('episode-player');
+        if (player) player.style.display = 'none';
+    }
 }
 
 function hideInfoBox() {
