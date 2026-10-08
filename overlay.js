@@ -170,10 +170,12 @@ function loadEpisodeAudio(idx) {
 	episodeAudioState.fallbackTried = false;
 	setEpisodeStatus('Episódio ' + ((entry.key.match(/^(E\d{1,4})\b/i) || [entry.key])[1]));
 
-	// Primary link: exact artwork/episode name + .mp3.
-	// The key is encoded as one URL path component, so spaces, accents and
-	// punctuation in Portuguese titles are handled correctly.
-	audio.src = episodeAudioUrl(entry.key + '.mp3');
+	// Primary link: artwork/episode name + .mp3.
+	// Trim leading/trailing spaces so accidental extra spaces in the JSON
+	// do not prevent the audio file from being found. The museum image
+	// reference itself is left untouched.
+	var audioKey = String(entry.key).trim();
+	audio.src = episodeAudioUrl(audioKey + '.mp3');
 	audio.load();
 }
 
