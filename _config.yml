@@ -1,0 +1,5 @@
+# Keep original episode MP3s in Git, but exclude them from GitHub Pages.
+# The museum player uses the existing podcast hosting.
+exclude:
+  - "EPISÓDIOS PARA O MUSEU"
+  - "REVERTER-AUDIOS-RSS.md"
