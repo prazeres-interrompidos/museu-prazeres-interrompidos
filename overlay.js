@@ -26,7 +26,7 @@ function localEpisodeAudioUrl(filename) {
 function episodeAudioUrl(filename) {
     var match = String(filename).match(/^E(\d{1,4})\b/i);
     var hosted = match && MUSEUM_EPISODE_RSS[String(Number(match[1]))];
-    return hosted || localEpisodeAudioUrl(filename);
+    return hosted || '';
 }
 
 function getArtworkEntry(idx) {
@@ -81,7 +81,7 @@ function setupEpisodePlayer() {
 			button.title = 'Pausar episódio';
 			button.setAttribute('aria-label', 'Pausar episódio');
 		}).catch(function() {
-            if (episodeAudioState.fallbackStep === 0) setEpisodeStatus('Não foi possível reproduzir o áudio.');
+            if (!audio.error) setEpisodeStatus('Não foi possível reproduzir o áudio do podcast. Tente novamente.');
 		});
 		} else {
             episodeAudioState.playRequested = false;
@@ -116,29 +116,14 @@ function setupEpisodePlayer() {
 	});
 
     audio.addEventListener('error', function() {
-        var match = episodeAudioState.key && episodeAudioState.key.match(/^(E\d{1,4})\b/i);
-        var next = null;
-        if (episodeAudioState.filename && episodeAudioState.fallbackStep === 0) {
-            episodeAudioState.fallbackStep = 1;
-            next = localEpisodeAudioUrl(episodeAudioState.filename);
-        } else if (match && episodeAudioState.fallbackStep === 1) {
-            episodeAudioState.fallbackStep = 2;
-            next = localEpisodeAudioUrl(match[1] + '.mp3');
-        }
-        if (next) {
-            setEpisodeStatus('A carregar o episódio…');
-            audio.src = next;
-            audio.load();
-            if (episodeAudioState.playRequested) {
-                audio.play().catch(function() {
-                    if (episodeAudioState.fallbackStep >= 2) setEpisodeStatus('Áudio não disponível.');
-                });
-            }
-            return;
-        }
+        if (!episodeAudioState.key) return;
+        episodeAudioState.playRequested = false;
         button.disabled = true;
         button.style.opacity = '0.55';
-        setEpisodeStatus('Áudio não disponível.');
+        setEpisodeStatus('Falha ao carregar o áudio do podcast. Volte a abrir este episódio para tentar novamente.');
+        var ambient = document.getElementById('museumMusic');
+        if (episodeAudioState.ambientWasPlaying && ambient) ambient.play().catch(function(){});
+        episodeAudioState.ambientWasPlaying = false;
     });
 }
 
@@ -199,14 +184,21 @@ function loadEpisodeAudio(idx) {
 	episodeAudioState.fallbackTried = false;
 	setEpisodeStatus('Episódio ' + ((entry.key.match(/^(E\d{1,4})\b/i) || [entry.key])[1]));
 
-	// Primary link: the matching RSS enclosure; original local MP3 is the fallback.
+	// Test phase: use only the RSS enclosure, so failures remain visible.
 	// Trim leading/trailing spaces so accidental extra spaces in the JSON
 	// do not prevent the audio file from being found. The museum image
 	// reference itself is left untouched.
 	var audioKey = String(entry.key).trim();
     episodeAudioState.filename = audioKey + ".mp3";
     episodeAudioState.fallbackStep = 0;
-	audio.src = episodeAudioUrl(audioKey + '.mp3');
+	var hostedUrl = episodeAudioUrl(audioKey + '.mp3');
+    if (!hostedUrl) {
+        button.disabled = true;
+        button.style.opacity = '0.55';
+        setEpisodeStatus('Este episódio não tem um áudio do podcast associado.');
+        return;
+    }
+	audio.src = hostedUrl;
 	audio.load();
 }
 
